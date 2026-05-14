@@ -38,7 +38,7 @@ function SupplierForm({ initial, onSubmit, loading }) {
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <Input
-          label="Nama Toko *"
+          label="Store Name *"
           value={form.store_name}
           onChange={(e) => set("store_name", e.target.value)}
           placeholder="contoh: TB Makmur Jaya"
@@ -46,35 +46,35 @@ function SupplierForm({ initial, onSubmit, loading }) {
           required
         />
         <Input
-          label="No. Telepon"
+          label="Phone Number"
           value={form.phone}
           onChange={(e) => set("phone", e.target.value)}
           placeholder="contoh: 08123456789"
         />
         <Input
-          label="Nama Kontak"
+          label="Contact Person"
           value={form.contact_person}
           onChange={(e) => set("contact_person", e.target.value)}
           placeholder="contoh: Pak Agus"
         />
         <Input
-          label="Alamat"
+          label="Address"
           value={form.address}
           onChange={(e) => set("address", e.target.value)}
-          placeholder="alamat toko"
+          placeholder="store address"
           className="col-span-2"
         />
         <Input
-          label="Catatan"
+          label="Notes"
           value={form.notes}
           onChange={(e) => set("notes", e.target.value)}
-          placeholder="opsional"
+          placeholder="optional"
           className="col-span-2"
         />
       </div>
       <div className="flex justify-end pt-2 border-t border-gray-100">
         <Button type="submit" variant="primary" loading={loading}>
-          {initial ? "Simpan Perubahan" : "Simpan Supplier"}
+          {initial ? "Save Changes" : "Save Supplier"}
         </Button>
       </div>
     </form>
@@ -100,7 +100,7 @@ function SupplierItemsModal({ supplier, onClose }) {
     <Modal
       open={!!supplier}
       onClose={onClose}
-      title={`Riwayat Pembelian — ${supplier.store_name}`}
+      title={`Purchase History — ${supplier.store_name}`}
       size="lg"
     >
       {isLoading ? (
@@ -109,12 +109,12 @@ function SupplierItemsModal({ supplier, onClose }) {
         </div>
       ) : items.length === 0 ? (
         <div className="text-center py-10 text-gray-400 text-sm">
-          Belum ada pembelian dari supplier ini.
+          No purchases found from this supplier.
         </div>
       ) : (
         <div className="space-y-4">
           <p className="text-xs text-gray-400">
-            {items.length} item · klik nama barang untuk lihat riwayat harga
+            {items.length} item · click item name to see price history
           </p>
           {Object.entries(grouped).map(([name, list]) => (
             <div
@@ -126,23 +126,23 @@ function SupplierItemsModal({ supplier, onClose }) {
                   {name}
                 </span>
                 <span className="text-xs text-gray-400">
-                  {list.length}x dibeli
+                  {list.length}x purchased
                 </span>
               </div>
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-100">
                     <th className="text-left px-4 py-2 text-xs text-gray-400 font-medium">
-                      Tanggal
+                      Date
                     </th>
                     <th className="text-left px-4 py-2 text-xs text-gray-400 font-medium">
                       Qty
                     </th>
                     <th className="text-left px-4 py-2 text-xs text-gray-400 font-medium">
-                      Harga Satuan
+                      Unit Price
                     </th>
                     <th className="text-left px-4 py-2 text-xs text-gray-400 font-medium">
-                      Diskon
+                      Discount
                     </th>
                     <th className="text-right px-4 py-2 text-xs text-gray-400 font-medium">
                       Subtotal
@@ -242,9 +242,9 @@ export default function Suppliers() {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Supplier</h1>
+          <h1 className="text-xl font-semibold text-gray-900">Suppliers</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            {suppliers.length} supplier terdaftar
+            {suppliers.length} suppliers registered
           </p>
         </div>
         <Button
@@ -254,7 +254,7 @@ export default function Suppliers() {
             setModalOpen(true);
           }}
         >
-          <Plus size={16} /> Tambah Supplier
+          <Plus size={16} /> Add Supplier
         </Button>
       </div>
 
@@ -267,7 +267,7 @@ export default function Suppliers() {
           <div className="text-center py-12">
             <Truck size={32} className="mx-auto text-gray-300 mb-3" />
             <p className="text-sm text-gray-400">
-              Belum ada supplier. Supplier otomatis muncul saat input material.
+              No suppliers found. Suppliers will automatically appear when you add materials.
             </p>
           </div>
         </Card>
@@ -326,7 +326,7 @@ export default function Suppliers() {
                   onClick={() => setViewSupplier(s)}
                   className="flex items-center gap-1.5 text-xs text-emerald-600 hover:text-emerald-700 font-medium"
                 >
-                  <Package size={13} /> Lihat riwayat pembelian
+                  <Package size={13} /> View Purchase History
                 </button>
               </div>
             </Card>
@@ -340,7 +340,7 @@ export default function Suppliers() {
           setModalOpen(false);
           setEditData(null);
         }}
-        title={editData ? "Edit Supplier" : "Tambah Supplier"}
+        title={editData ? "Edit Supplier" : "Add Supplier"}
       >
         <SupplierForm
           key={editData?.id ?? "new"}

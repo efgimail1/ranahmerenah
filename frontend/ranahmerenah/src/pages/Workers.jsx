@@ -24,9 +24,9 @@ const ROLE_OPTIONS = [
 ]
 
 const RATE_OPTIONS = [
-  { value: 'daily', label: 'Per Hari' },
+  { value: 'daily', label: 'Daily' },
   { value: 'per_unit', label: 'Per Unit' },
-  { value: 'fixed', label: 'Borongan' },
+  { value: 'fixed', label: 'Fixed' },
 ]
 
 const ROLE_COLOR = {
@@ -79,20 +79,20 @@ function WorkerForm({ initial, onSubmit, loading }) {
         </h4>
         <div className="grid grid-cols-2 gap-3">
           <Input
-            label="Nama Lengkap *"
+            label="Full Name *"
             value={form.full_name}
             onChange={e => set('full_name', e.target.value)}
             placeholder="contoh: Pak Budi"
             required
           />
           <Input
-            label="No. Telepon"
+            label="Phone Number"
             value={form.phone}
             onChange={e => set('phone', e.target.value)}
             placeholder="contoh: 08123456789"
           />
           <Select
-            label="Jabatan *"
+            label="Role *"
             value={form.role}
             onChange={e => set('role', e.target.value)}
           >
@@ -105,20 +105,20 @@ function WorkerForm({ initial, onSubmit, loading }) {
             value={form.is_active}
             onChange={e => set('is_active', e.target.value === 'true')}
           >
-            <option value="true">Aktif</option>
-            <option value="false">Tidak Aktif</option>
+            <option value="true">Active</option>
+            <option value="false">Inactive</option>
           </Select>
         </div>
       </div>
 
-      {/* Upah */}
+      {/* Rate */}
       <div>
         <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">
-          Upah
+          Rate
         </h4>
         <div className="grid grid-cols-2 gap-3">
           <Select
-            label="Tipe Upah *"
+            label="Rate Type *"
             value={form.rate_type}
             onChange={e => set('rate_type', e.target.value)}
           >
@@ -127,7 +127,7 @@ function WorkerForm({ initial, onSubmit, loading }) {
             ))}
           </Select>
           <CurrencyInput
-            label={`Nominal Upah (${RATE_TYPE[form.rate_type]})`}
+            label={`Rate Amount (${RATE_TYPE[form.rate_type]})`}
             value={form.rate_amount}
             onChange={val => set('rate_amount', val)}
             placeholder="0"
@@ -141,16 +141,16 @@ function WorkerForm({ initial, onSubmit, loading }) {
       {/* Catatan */}
       <div>
         <Input
-          label="Catatan"
+          label="Notes"
           value={form.notes}
           onChange={e => set('notes', e.target.value)}
-          placeholder="catatan tambahan (opsional)"
+          placeholder="additional notes (optional)"
         />
       </div>
 
       <div className="flex justify-end pt-2 border-t border-gray-100">
         <Button type="submit" variant="primary" loading={loading}>
-          {initial ? 'Simpan Perubahan' : 'Simpan Tukang'}
+          {initial ? 'Save Changes' : 'Save Worker'}
         </Button>
       </div>
     </form>
@@ -321,13 +321,13 @@ export default function Workers() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Data Tukang</h1>
+          <h1 className="text-xl font-semibold text-gray-900">Workers</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            {workers.length} tukang · {activeCount} aktif · {inactiveCount} nonaktif
+            {workers.length} workers · {activeCount} active · {inactiveCount} inactive
           </p>
         </div>
         <Button variant="primary" onClick={() => { setEditData(null); setModalOpen(true) }}>
-          <Plus size={16} /> Tambah Tukang
+          <Plus size={16} /> Add Worker
         </Button>
       </div>
 
@@ -336,9 +336,9 @@ export default function Workers() {
         {/* Filter Status */}
         <div className="flex gap-1.5">
           {[
-            { label: 'Semua', value: '' },
-            { label: 'Aktif', value: 'true' },
-            { label: 'Nonaktif', value: 'false' },
+            { label: 'All', value: '' },
+            { label: 'Active', value: 'true' },
+            { label: 'Inactive', value: 'false' },
           ].map(f => (
             <button
               key={f.value}
@@ -356,7 +356,7 @@ export default function Workers() {
 
         <div className="w-px h-4 bg-gray-200" />
 
-        {/* Filter Jabatan */}
+        {/* Filter Role */}
         <div className="flex gap-1.5 flex-wrap">
           <button
             onClick={() => setFilterRole('')}
@@ -366,7 +366,7 @@ export default function Workers() {
                 : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
             }`}
           >
-            Semua Jabatan
+            All Roles
           </button>
           {ROLE_OPTIONS.map(r => (
             <button
@@ -394,7 +394,7 @@ export default function Workers() {
           <div className="text-center py-12">
             <HardHat size={32} className="mx-auto text-gray-300 mb-3" />
             <p className="text-sm text-gray-400">
-              Belum ada tukang. Klik "Tambah Tukang" untuk mulai.
+              No workers found. Click "Add Worker" to get started.
             </p>
           </div>
         </Card>
@@ -424,7 +424,7 @@ export default function Workers() {
       <Modal
         open={modalOpen}
         onClose={() => { setModalOpen(false); setEditData(null) }}
-        title={editData ? 'Edit Data Tukang' : 'Tambah Tukang Baru'}
+        title={editData ? 'Edit Worker Data' : 'Add New Worker'}
         size="md"
       >
         <WorkerForm

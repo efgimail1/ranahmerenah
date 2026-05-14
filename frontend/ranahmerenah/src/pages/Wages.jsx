@@ -76,16 +76,16 @@ function WageForm({ onSubmit, loading, workers, projects }) {
     <form onSubmit={handleSubmit} className="space-y-5">
       <div>
         <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">
-          Detail Pembayaran Upah
+          Wage Payment Details
         </h4>
         <div className="grid grid-cols-2 gap-3">
           <Select
-            label="Tukang *"
+            label="Worker *"
             value={form.worker_id}
             onChange={e => handleWorkerChange(e.target.value)}
             required
           >
-            <option value="">-- Pilih Tukang --</option>
+            <option value="">-- Select Worker --</option>
             {workers.filter(w => w.is_active).map(w => (
               <option key={w.id} value={w.id}>
                 {w.full_name} — {WORKER_ROLE[w.role]}
@@ -94,18 +94,18 @@ function WageForm({ onSubmit, loading, workers, projects }) {
           </Select>
 
           <Select
-            label="Proyek"
+            label="Project"
             value={form.project_id}
             onChange={e => set('project_id', e.target.value)}
           >
-            <option value="">-- Pilih Proyek --</option>
+            <option value="">-- Select Project --</option>
             {projects.map(p => (
               <option key={p.id} value={p.id}>{p.project_name}</option>
             ))}
           </Select>
 
           <Input
-            label="Tanggal Bayar *"
+            label="Payment Date *"
             type="date"
             value={form.payment_date}
             onChange={e => set('payment_date', e.target.value)}
@@ -113,7 +113,7 @@ function WageForm({ onSubmit, loading, workers, projects }) {
           />
 
           <CurrencyInput
-            label="Rate (snapshot saat bayar)"
+            label="Rate (snapshot)"
             value={form.rate_snapshot}
             onChange={val => set('rate_snapshot', val)}
             placeholder="0"
@@ -122,7 +122,7 @@ function WageForm({ onSubmit, loading, workers, projects }) {
           {/* Qty berdasarkan tipe */}
           {selectedWorker?.rate_type === 'daily' && (
             <Input
-              label="Jumlah Hari Kerja"
+              label="Working Days"
               type="text"
               inputMode="decimal"
               value={form.days_worked}
@@ -133,7 +133,7 @@ function WageForm({ onSubmit, loading, workers, projects }) {
 
           {selectedWorker?.rate_type === 'per_unit' && (
             <Input
-              label="Jumlah Unit"
+              label="Unit Count"
               type="text"
               inputMode="decimal"
               value={form.unit_count}
@@ -143,17 +143,17 @@ function WageForm({ onSubmit, loading, workers, projects }) {
           )}
 
           <CurrencyInput
-            label="Potongan"
+            label="Deduction"
             value={form.deduction}
             onChange={val => set('deduction', val)}
             placeholder="0"
           />
 
           <Input
-            label="Catatan"
+            label="Notes"
             value={form.notes}
             onChange={e => set('notes', e.target.value)}
-            placeholder="opsional"
+            placeholder="optional"
             className="col-span-2"
           />
         </div>
@@ -164,19 +164,19 @@ function WageForm({ onSubmit, loading, workers, projects }) {
         <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
           <div className="flex items-center gap-2 mb-2">
             <HardHat size={14} className="text-blue-600" />
-            <span className="text-xs font-semibold text-blue-700">Info Tukang</span>
+            <span className="text-xs font-semibold text-blue-700">Worker Info</span>
           </div>
           <div className="grid grid-cols-3 gap-3 text-xs">
             <div>
-              <span className="text-gray-500">Jabatan</span>
+              <span className="text-gray-500">Position</span>
               <div className="font-medium text-gray-800">{WORKER_ROLE[selectedWorker.role]}</div>
             </div>
             <div>
-              <span className="text-gray-500">Tipe Upah</span>
+              <span className="text-gray-500">Rate Type</span>
               <div className="font-medium text-gray-800">{RATE_TYPE[selectedWorker.rate_type]}</div>
             </div>
             <div>
-              <span className="text-gray-500">Rate Normal</span>
+              <span className="text-gray-500">Standard Rate</span>
               <div className="font-medium text-gray-800">{formatRupiah(selectedWorker.rate_amount)}</div>
             </div>
           </div>
@@ -192,18 +192,18 @@ function WageForm({ onSubmit, loading, workers, projects }) {
                 ? `${daysWorked} hari × ${formatRupiah(rateSnapshot)}`
                 : selectedWorker?.rate_type === 'per_unit'
                 ? `${unitCount} unit × ${formatRupiah(rateSnapshot)}`
-                : 'Borongan'}
+                : 'Lump Sum'}
             </span>
             <span className="font-medium">{formatRupiah(gross)}</span>
           </div>
           {deduction > 0 && (
             <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Potongan</span>
+              <span className="text-gray-600">Deduction</span>
               <span className="font-medium text-red-500">- {formatRupiah(deduction)}</span>
             </div>
           )}
           <div className="flex justify-between text-sm font-semibold border-t border-gray-200 pt-1.5">
-            <span className="text-gray-800">Yang dibayarkan</span>
+            <span className="text-gray-800">Pay Worker Wages</span>
             <span className="text-emerald-700">{formatRupiah(net)}</span>
           </div>
         </div>
@@ -212,7 +212,7 @@ function WageForm({ onSubmit, loading, workers, projects }) {
       <div className="flex justify-end pt-2 border-t border-gray-100">
         <Button type="submit" variant="primary" loading={loading}
           disabled={!selectedWorker || gross <= 0}>
-          Simpan Pembayaran Upah
+          Save Wage Payment
         </Button>
       </div>
     </form>
@@ -288,13 +288,13 @@ export default function Wages() {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Upah Tukang</h1>
+          <h1 className="text-xl font-semibold text-gray-900">Wages Payment</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            {wages.length} transaksi · otomatis tercatat di pembukuan
+            {wages.length} transactions · automatically recorded in accounting
           </p>
         </div>
         <Button variant="primary" onClick={() => setModalOpen(true)}>
-          <Plus size={16} /> Bayar Upah
+          <Plus size={16} /> Pay Wages
         </Button>
       </div>
 
@@ -302,16 +302,16 @@ export default function Wages() {
       {wages.length > 0 && (
         <div className="grid grid-cols-3 gap-3">
           <div className="bg-white border border-gray-200 rounded-xl p-4">
-            <p className="text-xs text-gray-400 mb-1">Total Upah Kotor</p>
+            <p className="text-xs text-gray-400 mb-1">Total Gross Wages</p>
             <p className="text-lg font-semibold text-gray-900">{formatRupiah(totalGross)}</p>
           </div>
           <div className="bg-white border border-gray-200 rounded-xl p-4">
-            <p className="text-xs text-gray-400 mb-1">Total Dibayarkan</p>
+            <p className="text-xs text-gray-400 mb-1">Total Net Wages</p>
             <p className="text-lg font-semibold text-gray-900">{formatRupiah(totalNet)}</p>
           </div>
           <div className="bg-white border border-gray-200 rounded-xl p-4">
-            <p className="text-xs text-gray-400 mb-1">Total Hari Kerja</p>
-            <p className="text-lg font-semibold text-gray-900">{totalDays} hari</p>
+            <p className="text-xs text-gray-400 mb-1">Total Days Worked</p>
+            <p className="text-lg font-semibold text-gray-900">{totalDays} days</p>
           </div>
         </div>
       )}
@@ -325,7 +325,7 @@ export default function Wages() {
         <Card>
           <div className="text-center py-12">
             <HardHat size={32} className="mx-auto text-gray-300 mb-3" />
-            <p className="text-sm text-gray-400">Belum ada pembayaran upah.</p>
+            <p className="text-sm text-gray-400">No wage payments yet.</p>
           </div>
         </Card>
       ) : (
@@ -333,14 +333,14 @@ export default function Wages() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50">
-                <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Tanggal</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Tukang</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Jabatan</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Proyek</th>
+                <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Date</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Worker</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Position</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Project</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Detail</th>
-                <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Upah Kotor</th>
-                <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Potongan</th>
-                <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Dibayar</th>
+                <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Gross Wages</th>
+                <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Deductions</th>
+                <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Net Wages</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -365,7 +365,7 @@ export default function Wages() {
                       ? `${parseFloat(wage.days_worked)} hari × ${formatRupiah(wage.rate_snapshot)}`
                       : wage.unit_count
                       ? `${parseFloat(wage.unit_count)} unit × ${formatRupiah(wage.rate_snapshot)}`
-                      : `Borongan ${formatRupiah(wage.rate_snapshot)}`
+                      : `Lump Sum ${formatRupiah(wage.rate_snapshot)}`
                     }
                   </td>
                   <td className="px-4 py-3 text-right text-gray-700">
@@ -386,7 +386,7 @@ export default function Wages() {
             <tfoot>
               <tr className="border-t-2 border-gray-200 bg-gray-50">
                 <td colSpan={5} className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                  Total ({wages.length} transaksi)
+                  Total ({wages.length} transactions)
                 </td>
                 <td className="px-4 py-3 text-right font-semibold text-gray-700">
                   {formatRupiah(totalGross)}
@@ -406,7 +406,7 @@ export default function Wages() {
       <Modal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
-        title="Bayar Upah Tukang"
+        title="Pay Wages"
         size="md"
       >
         <WageForm

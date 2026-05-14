@@ -57,25 +57,25 @@ function IncomeForm({ onSubmit, loading }) {
     <form onSubmit={handleSubmit} className="space-y-5">
       <div>
         <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">
-          Detail Pemasukan
+          Income Details
         </h4>
         <div className="grid grid-cols-2 gap-3">
           <Input
-            label="Tanggal *"
+            label="Date *"
             type="date"
             value={form.entry_date}
             onChange={e => set('entry_date', e.target.value)}
             required
           />
           <Input
-            label="Diterima Dari *"
+            label="Received From *"
             value={form.received_from}
             onChange={e => set('received_from', e.target.value)}
             placeholder="contoh: Pak Budi — Villa Bali"
             required
           />
           <Input
-            label="Keterangan *"
+            label="Description *"
             value={form.description}
             onChange={e => set('description', e.target.value)}
             placeholder="contoh: Pembayaran DP Proyek Villa"
@@ -83,7 +83,7 @@ function IncomeForm({ onSubmit, loading }) {
             required
           />
           <Select
-            label="Metode Pembayaran"
+            label="Payment Method"
             value={form.payment_method}
             onChange={e => {
               set('payment_method', e.target.value)
@@ -95,7 +95,7 @@ function IncomeForm({ onSubmit, loading }) {
             ))}
           </Select>
           <CurrencyInput
-            label="Jumlah Masuk (Gross) *"
+            label="Gross Amount *"
             value={form.gross_amount}
             onChange={val => set('gross_amount', val)}
             placeholder="0"
@@ -107,37 +107,37 @@ function IncomeForm({ onSubmit, loading }) {
       {form.is_qris && gross > 0 && (
         <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-1.5">
           <div className="flex items-center gap-2 text-xs font-semibold text-amber-700 mb-2">
-            <AlertCircle size={14} /> Potongan QRIS 0.3%
+            <AlertCircle size={14} /> QRIS Fee 0.3%
           </div>
           <div className="flex justify-between text-sm">
-            <span className="text-gray-600">Nominal dikirim klien</span>
+            <span className="text-gray-600">Amount sent to client</span>
             <span className="font-medium">{formatRupiah(gross)}</span>
           </div>
           <div className="flex justify-between text-sm">
-            <span className="text-gray-600">Potongan QRIS (0.3%)</span>
+            <span className="text-gray-600">QRIS Fee (0.3%)</span>
             <span className="font-medium text-red-500">- {formatRupiah(qrisFee)}</span>
           </div>
           <div className="flex justify-between text-sm font-semibold border-t border-amber-200 pt-1.5">
-            <span className="text-gray-800">Yang masuk ke rekening</span>
+            <span className="text-gray-800">Amount received in bank</span>
             <span className="text-emerald-700">{formatRupiah(netAmount)}</span>
           </div>
         </div>
       )}
 
       <div className="flex flex-col gap-1">
-        <label className="text-sm font-medium text-gray-700">Catatan</label>
+        <label className="text-sm font-medium text-gray-700">Notes</label>
         <input
           type="text"
           value={form.notes}
           onChange={e => set('notes', e.target.value)}
-          placeholder="opsional"
+          placeholder="optional"
           className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
         />
       </div>
 
       <div className="flex justify-end pt-2 border-t border-gray-100">
         <Button type="submit" variant="primary" loading={loading}>
-          Simpan Pemasukan
+          Save Income
         </Button>
       </div>
     </form>
@@ -176,32 +176,32 @@ function ExpenseForm({ onSubmit, loading }) {
     <form onSubmit={handleSubmit} className="space-y-5">
       <div>
         <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">
-          Detail Pengeluaran
+          Expense Details
         </h4>
         <div className="grid grid-cols-2 gap-3">
           <Input
-            label="Tanggal *"
+            label="Date *"
             type="date"
             value={form.entry_date}
             onChange={e => set('entry_date', e.target.value)}
             required
           />
           <Input
-            label="Dibayarkan Kepada"
+            label="Paid To"
             value={form.paid_to}
             onChange={e => set('paid_to', e.target.value)}
-            placeholder="contoh: TB Makmur / Pak Ahmad"
+            placeholder="e.g., TB Makmur / Pak Ahmad"
           />
           <Input
-            label="Keterangan *"
+            label="Description *"
             value={form.description}
             onChange={e => set('description', e.target.value)}
-            placeholder="contoh: Beli material proyek Villa"
+            placeholder="e.g., Beli material proyek Villa"
             className="col-span-2"
             required
           />
           <Select
-            label="Metode Pembayaran"
+            label="Payment Method"
             value={form.payment_method}
             onChange={e => set('payment_method', e.target.value)}
           >
@@ -210,24 +210,24 @@ function ExpenseForm({ onSubmit, loading }) {
             ))}
           </Select>
           <CurrencyInput
-            label="Jumlah Keluar (sebelum diskon)"
+            label="Gross Expense"
             value={form.gross_expense}
             onChange={val => set('gross_expense', val)}
             placeholder="0"
           />
           <CurrencyInput
-            label="Diskon Diterima"
+            label="Discount Received"
             value={form.discount_received}
             onChange={val => set('discount_received', val)}
             placeholder="0"
           />
           <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-gray-700">Catatan</label>
+            <label className="text-sm font-medium text-gray-700">Notes</label>
             <input
               type="text"
               value={form.notes}
               onChange={e => set('notes', e.target.value)}
-              placeholder="opsional"
+              placeholder="optional"
               className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
           </div>
@@ -238,17 +238,17 @@ function ExpenseForm({ onSubmit, loading }) {
       {gross > 0 && (
         <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg space-y-1.5">
           <div className="flex justify-between text-sm">
-            <span className="text-gray-600">Jumlah sebelum diskon</span>
+            <span className="text-gray-600">Gross Expense</span>
             <span className="font-medium">{formatRupiah(gross)}</span>
           </div>
           {discount > 0 && (
             <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Diskon diterima</span>
+              <span className="text-gray-600">Discount Received</span>
               <span className="font-medium text-emerald-600">- {formatRupiah(discount)}</span>
             </div>
           )}
           <div className="flex justify-between text-sm font-semibold border-t border-gray-200 pt-1.5">
-            <span className="text-gray-800">Yang benar-benar keluar</span>
+            <span className="text-gray-800">Amount paid out</span>
             <span className="text-red-600">{formatRupiah(net)}</span>
           </div>
         </div>
@@ -256,7 +256,7 @@ function ExpenseForm({ onSubmit, loading }) {
 
       <div className="flex justify-end pt-2 border-t border-gray-100">
         <Button type="submit" variant="primary" loading={loading}>
-          Simpan Pengeluaran
+          Save Expense
         </Button>
       </div>
     </form>
@@ -336,9 +336,9 @@ export default function Ledger() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Pembukuan</h1>
+          <h1 className="text-xl font-semibold text-gray-900">Ledger</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Pencatatan arus kas masuk & keluar
+            Income & Expense Tracking
           </p>
         </div>
         <div className="flex gap-2">
@@ -347,14 +347,14 @@ export default function Ledger() {
             onClick={() => setModalType('expense')}
           >
             <TrendingDown size={16} className="text-red-500" />
-            Catat Pengeluaran
+            Record Expense
           </Button>
           <Button
             variant="primary"
             onClick={() => setModalType('income')}
           >
             <TrendingUp size={16} />
-            Catat Pemasukan
+            Record Income
           </Button>
         </div>
       </div>
@@ -364,14 +364,14 @@ export default function Ledger() {
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <ArrowDownCircle size={16} className="text-emerald-600" />
-            <span className="text-xs font-medium text-emerald-600">Total Masuk</span>
+            <span className="text-xs font-medium text-emerald-600">Total Income</span>
           </div>
           <p className="text-lg font-bold text-emerald-700">{formatRupiah(totalIncome)}</p>
         </div>
         <div className="bg-red-50 border border-red-200 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <ArrowUpCircle size={16} className="text-red-500" />
-            <span className="text-xs font-medium text-red-600">Total Keluar</span>
+            <span className="text-xs font-medium text-red-600">Total Expense</span>
           </div>
           <p className="text-lg font-bold text-red-600">{formatRupiah(totalExpense)}</p>
         </div>
@@ -379,7 +379,7 @@ export default function Ledger() {
           <div className="flex items-center gap-2 mb-2">
             <Wallet size={16} className={netBalance >= 0 ? 'text-blue-600' : 'text-orange-500'} />
             <span className={`text-xs font-medium ${netBalance >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>
-              Saldo Bersih
+              Net Balance
             </span>
           </div>
           <p className={`text-lg font-bold ${netBalance >= 0 ? 'text-blue-700' : 'text-orange-700'}`}>
@@ -389,7 +389,7 @@ export default function Ledger() {
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <TrendingUp size={16} className="text-gray-400" />
-            <span className="text-xs font-medium text-gray-500">Total Diskon Diterima</span>
+            <span className="text-xs font-medium text-gray-500">Total Discount Received</span>
           </div>
           <p className="text-lg font-bold text-gray-700">{formatRupiah(totalDiscount)}</p>
         </div>
@@ -399,9 +399,9 @@ export default function Ledger() {
       <div className="flex items-center gap-3 flex-wrap">
         <div className="flex gap-1.5">
           {[
-            { label: 'Semua', value: '' },
-            { label: 'Pemasukan', value: 'income' },
-            { label: 'Pengeluaran', value: 'expense' },
+            { label: 'All', value: '' },
+            { label: 'Income', value: 'income' },
+            { label: 'Expense', value: 'expense' },
           ].map(f => (
             <button key={f.value} onClick={() => setFilterType(f.value)}
               className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
@@ -415,7 +415,7 @@ export default function Ledger() {
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-400">Dari</span>
+          <span className="text-xs text-gray-400">From</span>
           <input type="date" value={dateFrom}
             onChange={e => setDateFrom(e.target.value)}
             className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -443,7 +443,7 @@ export default function Ledger() {
         <Card>
           <div className="text-center py-12">
             <Wallet size={32} className="mx-auto text-gray-300 mb-3" />
-            <p className="text-sm text-gray-400">Belum ada entri pembukuan.</p>
+            <p className="text-sm text-gray-400">There are no bookkeeping entries yet.</p>
           </div>
         </Card>
       ) : (
@@ -452,13 +452,13 @@ export default function Ledger() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
-                  <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide w-28">Tanggal</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Keterangan</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Dari / Kepada</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide w-24">Metode</th>
+                  <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide w-28">Date</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Description</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">From / To</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide w-24">Method</th>
                   <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide w-36">Gross</th>
                   <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide w-36">Net</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide w-24">Tipe</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide w-24">Type</th>
                   <th className="px-4 py-3 w-12"></th>
                 </tr>
               </thead>
@@ -482,7 +482,7 @@ export default function Ledger() {
                         )}
                         {!isIncome && parseFloat(entry.discount_received) > 0 && (
                           <div className="text-xs text-emerald-600">
-                            Diskon: {formatRupiah(entry.discount_received)}
+                            Discount: {formatRupiah(entry.discount_received)}
                           </div>
                         )}
                       </td>
@@ -508,7 +508,7 @@ export default function Ledger() {
                       </td>
                       <td className="px-4 py-3">
                         <Badge color={isIncome ? 'green' : 'red'}>
-                          {isIncome ? 'Masuk' : 'Keluar'}
+                          {isIncome ? 'Income' : 'Expense'}
                         </Badge>
                       </td>
                       <td className="px-4 py-3 text-right">
@@ -552,7 +552,7 @@ export default function Ledger() {
       <Modal
         open={modalType === 'income'}
         onClose={() => setModalType(null)}
-        title="Catat Pemasukan"
+        title="Record Income"
         size="md"
       >
         <IncomeForm
@@ -567,7 +567,7 @@ export default function Ledger() {
       <Modal
         open={modalType === 'expense'}
         onClose={() => setModalType(null)}
-        title="Catat Pengeluaran"
+        title="Record Expense"
         size="md"
       >
         <ExpenseForm

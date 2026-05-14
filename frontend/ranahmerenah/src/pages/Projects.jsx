@@ -112,32 +112,32 @@ function ProjectForm({ initial, onSubmit, loading }) {
   const termTypeOptions = [
     { value: 'dp', label: 'DP' },
     { value: 'termin', label: 'Termin' },
-    { value: 'final', label: 'Pelunasan' },
+    { value: 'final', label: 'Final' },
   ]
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {/* Info Klien */}
+      {/* Client & Project Info */}
       <div>
         <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">
-          Info Klien & Proyek
+          Client & Project Info
         </h4>
         <div className="grid grid-cols-2 gap-3">
           <Input
-            label="Nama Klien *"
+            label="Client Name *"
             value={form.client_name}
             onChange={e => set('client_name', e.target.value)}
             placeholder="contoh: Pak Budi Santoso"
             required
           />
           <Input
-            label="No. Telepon"
+            label="Phone Number"
             value={form.client_phone}
             onChange={e => set('client_phone', e.target.value)}
             placeholder="contoh: 08123456789"
           />
           <Input
-            label="Nama Proyek *"
+            label="Project Name *"
             value={form.project_name}
             onChange={e => set('project_name', e.target.value)}
             placeholder="contoh: Villa 2 Lantai"
@@ -145,7 +145,7 @@ function ProjectForm({ initial, onSubmit, loading }) {
             required
           />
           <Input
-            label="Lokasi"
+            label="Location"
             value={form.location}
             onChange={e => set('location', e.target.value)}
             placeholder="contoh: Bandung, Jawa Barat"
@@ -157,24 +157,24 @@ function ProjectForm({ initial, onSubmit, loading }) {
       {/* Tanggal */}
       <div>
         <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">
-          Tanggal
+          Received Date
         </h4>
         <div className="grid grid-cols-3 gap-3">
           <Input
-            label="Tanggal Dapat Proyek *"
+            label="Received Date *"
             type="date"
             value={form.received_date}
             onChange={e => set('received_date', e.target.value)}
             required
           />
           <Input
-            label="Mulai Proyek"
+            label="Start Date"
             type="date"
             value={form.start_date}
             onChange={e => set('start_date', e.target.value)}
           />
           <Input
-            label="Target Selesai"
+            label="End Date"
             type="date"
             value={form.end_date}
             onChange={e => set('end_date', e.target.value)}
@@ -182,20 +182,20 @@ function ProjectForm({ initial, onSubmit, loading }) {
         </div>
       </div>
 
-      {/* Nilai & Status */}
+      {/* Value & Status */}
       <div>
         <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">
-          Nilai & Status
+          Value & Status
         </h4>
         <div className="grid grid-cols-3 gap-3">
           <CurrencyInput
-            label="Nilai RAB"
+            label="RAB Value"
             value={form.rab_value}
             onChange={val => set('rab_value', val)}
             placeholder="0"
           />
           <CurrencyInput
-            label="Biaya Arsitek"
+            label="Architect Fee"
             value={form.architect_fee}
             onChange={val => set('architect_fee', val)}
             placeholder="0"
@@ -206,18 +206,18 @@ function ProjectForm({ initial, onSubmit, loading }) {
             onChange={e => set('status', e.target.value)}
           >
             <option value="pending">Pending</option>
-            <option value="in_progress">Berjalan</option>
-            <option value="completed">Selesai</option>
-            <option value="on_hold">Ditahan</option>
-            <option value="cancelled">Batal</option>
+            <option value="in_progress">In Progress</option>
+            <option value="completed">Completed</option>
+            <option value="on_hold">On Hold</option>
+            <option value="cancelled">Cancelled</option>
           </Select>
         </div>
         <div className="mt-3">
           <Input
-            label="Catatan"
+            label="Notes"
             value={form.notes}
             onChange={e => set('notes', e.target.value)}
-            placeholder="catatan tambahan (opsional)"
+            placeholder="additional notes (optional)"
           />
         </div>
       </div>
@@ -226,16 +226,16 @@ function ProjectForm({ initial, onSubmit, loading }) {
       <div>
         <div className="flex items-center justify-between mb-3">
           <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-widest">
-            Termin Pembayaran
+            Payment Terms
           </h4>
           <Button type="button" variant="ghost" size="sm" onClick={addPayment}>
-            <Plus size={14} /> Tambah Termin
+            <Plus size={14} /> Add Term
           </Button>
         </div>
 
         {payments.length === 0 ? (
           <p className="text-sm text-gray-400 text-center py-4 border border-dashed border-gray-200 rounded-lg">
-            Belum ada termin. Klik "Tambah Termin" untuk menambah.
+            There are no terms yet. Click "Add Term" to add one.
           </p>
         ) : (
           <div className="space-y-3">
@@ -253,7 +253,7 @@ function ProjectForm({ initial, onSubmit, loading }) {
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <Select
-                    label="Tipe"
+                    label="Type"
                     value={pay.term_type}
                     onChange={e => setPayment(i, 'term_type', e.target.value)}
                   >
@@ -262,13 +262,13 @@ function ProjectForm({ initial, onSubmit, loading }) {
                     ))}
                   </Select>
                   <Input
-                    label="Label"
+                    label="Label (e.g. Down Payment)"
                     value={pay.term_label}
                     onChange={e => setPayment(i, 'term_label', e.target.value)}
                     placeholder="contoh: DP, Termin 1"
                   />
                   <Input
-                    label="Persentase (%)"
+                    label="Percentage  (%)"
                     type="number"
                     min="0"
                     max="100"
@@ -277,22 +277,22 @@ function ProjectForm({ initial, onSubmit, loading }) {
                     placeholder="contoh: 30"
                   />
                   <CurrencyInput
-                    label="Nominal"
+                    label="Amount"
                     value={pay.amount}
                     onChange={val => setPayment(i, 'amount', val)}
                     placeholder="0"
                   />
                   <Input
-                    label="Jatuh Tempo"
+                    label="Due Date"
                     type="date"
                     value={pay.due_date}
                     onChange={e => setPayment(i, 'due_date', e.target.value)}
                   />
                   <Input
-                    label="Catatan"
+                    label="Notes"
                     value={pay.notes}
                     onChange={e => setPayment(i, 'notes', e.target.value)}
-                    placeholder="opsional"
+                    placeholder="optional"
                   />
                 </div>
               </div>
@@ -303,7 +303,7 @@ function ProjectForm({ initial, onSubmit, loading }) {
 
       <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
         <Button type="submit" variant="primary" loading={loading}>
-          {initial ? 'Simpan Perubahan' : 'Simpan Proyek'}
+          {initial ? 'Save Changes' : 'Save Project'}
         </Button>
       </div>
     </form>
@@ -424,11 +424,11 @@ export default function Projects() {
   }
 
   const filters = [
-    { label: 'Semua', value: '' },
+    { label: 'All', value: '' },
     { label: 'Pending', value: 'pending' },
-    { label: 'Berjalan', value: 'in_progress' },
-    { label: 'Selesai', value: 'completed' },
-    { label: 'Ditahan', value: 'on_hold' },
+    { label: 'In Progress', value: 'in_progress' },
+    { label: 'Completed', value: 'completed' },
+    { label: 'On Hold', value: 'on_hold' },
   ]
 
   return (
@@ -436,11 +436,11 @@ export default function Projects() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Daftar Proyek</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{projects.length} proyek ditemukan</p>
+          <h1 className="text-xl font-semibold text-gray-900">Projects</h1>
+          <p className="text-sm text-gray-500 mt-0.5">{projects.length} projects found</p>
         </div>
         <Button variant="primary" onClick={() => { setEditData(null); setModalOpen(true) }}>
-          <Plus size={16} /> Tambah Proyek
+          <Plus size={16} /> Add Project
         </Button>
       </div>
 
@@ -469,7 +469,7 @@ export default function Projects() {
       ) : projects.length === 0 ? (
         <Card>
           <div className="text-center py-12 text-gray-400">
-            <p className="text-sm">Belum ada proyek. Klik "Tambah Proyek" untuk mulai.</p>
+            <p className="text-sm">No projects yet. Click "Add Project" to get started.</p>
           </div>
         </Card>
       ) : (
@@ -493,7 +493,7 @@ export default function Projects() {
                   </div>
 
                   <div className="text-right hidden md:block">
-                    <div className="text-xs text-gray-400">Biaya Arsitek</div>
+                    <div className="text-xs text-gray-400">Architect Fee</div>
                     <div className="text-sm font-semibold text-gray-900">
                       {formatRupiah(p.architect_fee)}
                     </div>
@@ -515,12 +515,12 @@ export default function Projects() {
                   </div>
 
                   <div className="text-right hidden md:block">
-                    <div className="text-xs text-gray-400">Terkumpul</div>
+                    <div className="text-xs text-gray-400">Collected</div>
                     <div className="text-sm font-medium text-emerald-700">
                       {formatRupiah(p.total_paid)}
                     </div>
                     <div className="text-xs text-red-400">
-                      Sisa: {formatRupiah(p.total_outstanding)}
+                      Outstanding: {formatRupiah(p.total_outstanding)}
                     </div>
                   </div>
 
@@ -551,7 +551,7 @@ export default function Projects() {
                   <div className="border-t border-gray-100 px-5 py-4 bg-gray-50">
                     <div className="flex items-center justify-between mb-3">
                       <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                        Termin Pembayaran
+                        Payment Terms
                       </span>
                       <div className="text-xs text-gray-400">
                         RAB: {formatRupiah(p.rab_value)}
@@ -560,7 +560,7 @@ export default function Projects() {
 
                     {!p.payments?.length ? (
                       <p className="text-xs text-gray-400 italic">
-                        Belum ada termin pembayaran.
+                        No payment terms found.
                       </p>
                     ) : (
                       <div className="space-y-2">
@@ -578,11 +578,11 @@ export default function Projects() {
                               <PaymentStatusIcon status={ps} />
                               <div className="flex-1">
                                 <span className="text-sm font-medium text-gray-800">
-                                  {pay.term_label || `Termin ${i + 1}`}
+                                  {pay.term_label || `Term ${i + 1}`}
                                 </span>
                                 {pay.due_date && (
                                   <span className="text-xs text-gray-400 ml-2">
-                                    · Jatuh tempo: {formatDate(pay.due_date)}
+                                    · Due Date: {formatDate(pay.due_date)}
                                   </span>
                                 )}
                               </div>
@@ -599,9 +599,9 @@ export default function Projects() {
                                 : ps === 'partial' ? 'amber'
                                 : 'gray'
                               }>
-                                {ps === 'paid' ? 'Lunas'
-                                  : ps === 'partial' ? 'Sebagian'
-                                  : 'Belum'}
+                                {ps === 'paid' ? 'Paid'
+                                  : ps === 'partial' ? 'Partial'
+                                  : 'Unpaid'}
                               </Badge>
                             </div>
                           )
@@ -620,7 +620,7 @@ export default function Projects() {
       <Modal
         open={modalOpen}
         onClose={() => { setModalOpen(false); setEditData(null) }}
-        title={editData ? 'Edit Proyek' : 'Tambah Proyek Baru'}
+        title={editData ? 'Edit Project' : 'Add New Project'}
         size="lg"
       >
         <ProjectForm

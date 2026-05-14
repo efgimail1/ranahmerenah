@@ -53,9 +53,9 @@ const PAID_BY_OPTIONS = [
   { value: "other", label: "Lainnya" },
 ];
 const RECEIPT_TYPE_OPTIONS = [
-  { value: "physical", label: "Bon Fisik" },
-  { value: "digital", label: "Foto Digital" },
-  { value: "both", label: "Keduanya" },
+  { value: "physical", label: "Physical" },
+  { value: "digital", label: "Digital" },
+  { value: "both", label: "Both" },
 ];
 const paidByLabel = {
   architect: "Arsitek",
@@ -63,9 +63,9 @@ const paidByLabel = {
   other: "Lainnya",
 };
 const receiptLabel = {
-  physical: "Bon Fisik",
+  physical: "Physical",
   digital: "Digital",
-  both: "Fisik & Digital",
+  both: "Both",
 };
 
 let _keyCounter = 0;
@@ -103,8 +103,8 @@ function ItemLookupModal({ open, onClose, onSelect, catalog }) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
           <div>
-            <h3 className="text-sm font-semibold text-gray-900">Pilih Barang dari Katalog</h3>
-            <p className="text-xs text-gray-400 mt-0.5">{catalog.length} barang tersedia</p>
+            <h3 className="text-sm font-semibold text-gray-900">Select Item from Catalog</h3>
+            <p className="text-xs text-gray-400 mt-0.5">{catalog.length} items available</p>
           </div>
           <button onClick={onClose}
             className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg">
@@ -121,7 +121,7 @@ function ItemLookupModal({ open, onClose, onSelect, catalog }) {
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Cari nama barang atau kode..."
+              placeholder="Search item name or code..."
               className="w-full pl-8 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
           </div>
@@ -130,7 +130,7 @@ function ItemLookupModal({ open, onClose, onSelect, catalog }) {
             onChange={e => setFilterCat(e.target.value)}
             className="text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 w-44"
           >
-            <option value="">Semua Kategori</option>
+            <option value="">All Categories</option>
             {categories.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
@@ -139,15 +139,15 @@ function ItemLookupModal({ open, onClose, onSelect, catalog }) {
         <div className="overflow-y-auto flex-1">
           {filtered.length === 0 ? (
             <div className="text-center py-10 text-gray-400 text-sm">
-              Barang tidak ditemukan.
+              Item not found.
             </div>
           ) : (
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="text-left px-5 py-2.5 text-xs font-medium text-gray-500 w-28">Kode</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Nama Barang</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500 w-28">Kategori</th>
+                  <th className="text-left px-5 py-2.5 text-xs font-medium text-gray-500 w-28">Code</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Item Name</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500 w-28">Category</th>
                   <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500 w-20">UOM</th>
                 </tr>
               </thead>
@@ -176,9 +176,9 @@ function ItemLookupModal({ open, onClose, onSelect, catalog }) {
         {/* Footer */}
         <div className="px-5 py-3 border-t border-gray-100 bg-gray-50 rounded-b-2xl flex items-center justify-between">
           <span className="text-xs text-gray-400">
-            {filtered.length} dari {catalog.length} barang
+            {filtered.length} of {catalog.length} items
           </span>
-          <p className="text-xs text-gray-400">Klik baris untuk memilih</p>
+          <p className="text-xs text-gray-400">Click row to select</p>
         </div>
       </div>
     </div>
@@ -428,13 +428,13 @@ function PurchaseOrderForm({ initial, onSubmit, loading, projects, suppliers, ca
       {/* ── HEADER INFO ── */}
       <div>
         <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">
-          Informasi Pembelian
+          Purchase Information
         </h4>
         <div className="grid grid-cols-3 gap-3">
           <div className="flex flex-col gap-1">
-            <label className={fieldLabel}>Supplier / Toko</label>
+            <label className={fieldLabel}>Supplier</label>
             <select value={header.supplier_id} onChange={e=>setH('supplier_id',e.target.value)} className={fieldInput}>
-              <option value="">-- Pilih Supplier --</option>
+              <option value="">-- Select Supplier --</option>
               {suppliers.map(s=><option key={s.id} value={s.id}>{s.store_name}</option>)}
             </select>
             {selectedSupplier?.phone && (
@@ -443,9 +443,9 @@ function PurchaseOrderForm({ initial, onSubmit, loading, projects, suppliers, ca
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className={fieldLabel}>Proyek</label>
+            <label className={fieldLabel}>Project</label>
             <select value={header.project_id} onChange={e=>setH('project_id',e.target.value)} className={fieldInput}>
-              <option value="">-- Pilih Proyek --</option>
+              <option value="">-- Select Project --</option>
               {projects.map(p=><option key={p.id} value={p.id}>{p.project_name}</option>)}
             </select>
             {selectedProject?.location && (
@@ -454,33 +454,33 @@ function PurchaseOrderForm({ initial, onSubmit, loading, projects, suppliers, ca
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className={fieldLabel}>Tanggal Beli *</label>
+            <label className={fieldLabel}>Purchase Date *</label>
             <input type="date" value={header.purchase_date}
               onChange={e=>setH('purchase_date',e.target.value)}
               required className={fieldInput}/>
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className={fieldLabel}>Status Pembayaran</label>
+            <label className={fieldLabel}>Payment Status</label>
             <select value={header.is_paid} onChange={e=>setH('is_paid',e.target.value)} className={fieldInput}>
-              <option value="false">Belum Dibayar</option>
-              <option value="true">Sudah Dibayar</option>
+              <option value="false">Not Paid</option>
+              <option value="true">Paid</option>
             </select>
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className={fieldLabel}>Dibayar Oleh</label>
+            <label className={fieldLabel}>Paid By</label>
             <select value={header.paid_by} onChange={e=>setH('paid_by',e.target.value)} className={fieldInput}>
               {PAID_BY_OPTIONS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className={fieldLabel}>Bon / Kwitansi</label>
+            <label className={fieldLabel}>Receipt / Invoice</label>
             <div className="flex gap-2">
               <select value={header.has_receipt} onChange={e=>setH('has_receipt',e.target.value)} className={fieldInput}>
-                <option value="false">Tidak Ada</option>
-                <option value="true">Ada</option>
+                <option value="false">Not Available</option>
+                <option value="true">Available</option>
               </select>
               {header.has_receipt === 'true' && (
                 <select value={header.receipt_type} onChange={e=>setH('receipt_type',e.target.value)} className={fieldInput}>
@@ -491,10 +491,10 @@ function PurchaseOrderForm({ initial, onSubmit, loading, projects, suppliers, ca
           </div>
 
           <div className="col-span-3 flex flex-col gap-1">
-            <label className={fieldLabel}>Catatan</label>
+            <label className={fieldLabel}>Notes</label>
             <input type="text" value={header.notes}
               onChange={e=>setH('notes',e.target.value)}
-              placeholder="catatan tambahan (opsional)"
+              placeholder="additional notes (optional)"
               className={fieldInput}/>
           </div>
         </div>
@@ -504,13 +504,13 @@ function PurchaseOrderForm({ initial, onSubmit, loading, projects, suppliers, ca
       <div>
         <div className="flex items-center justify-between mb-3">
           <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-widest">
-            Daftar Barang
+            Order Lines
             <span className="ml-2 normal-case font-normal text-gray-300">
-              {items.length} baris · total qty {totalQty}
+              {items.length} lines · total qty {totalQty}
             </span>
           </h4>
           <Button type="button" variant="ghost" size="sm" onClick={addItem}>
-            <Plus size={14}/> Tambah Baris
+            <Plus size={14}/> Add Line
           </Button>
         </div>
 
@@ -521,15 +521,15 @@ function PurchaseOrderForm({ initial, onSubmit, loading, projects, suppliers, ca
                 <tr className="bg-gray-50 border-b border-gray-200">
                   <th className="px-3 py-2.5 text-center text-xs font-medium text-gray-500 w-8">#</th>
                   <th className="px-2 py-2.5 text-left text-xs font-medium text-gray-500">
-                    Nama Barang
-                    <span className="ml-1 text-gray-300 font-normal normal-case">(ketik untuk cari katalog)</span>
+                    Item Name
+                    <span className="ml-1 text-gray-300 font-normal normal-case">(type to search catalog)</span>
                   </th>
                   <th className="px-2 py-2.5 text-right text-xs font-medium text-gray-500 w-28">Qty</th>
                   <th className="px-2 py-2.5 text-left text-xs font-medium text-gray-500 w-24">UOM</th>
-                  <th className="px-2 py-2.5 text-right text-xs font-medium text-gray-500 w-36">Harga Satuan</th>
-                  <th className="px-2 py-2.5 text-right text-xs font-medium text-gray-500 w-32">Diskon/Sat</th>
-                  <th className="px-2 py-2.5 text-right text-xs font-medium text-gray-500 w-32">Subtotal Bon</th>
-                  <th className="px-2 py-2.5 text-right text-xs font-medium text-gray-500 w-36">Dibayarkan</th>
+                  <th className="px-2 py-2.5 text-right text-xs font-medium text-gray-500 w-36">Unit Price</th>
+                  <th className="px-2 py-2.5 text-right text-xs font-medium text-gray-500 w-32">Discount</th>
+                  <th className="px-2 py-2.5 text-right text-xs font-medium text-gray-500 w-32">Subtotal</th>
+                  <th className="px-2 py-2.5 text-right text-xs font-medium text-gray-500 w-36">Paid</th>
                   <th className="w-8"></th>
                 </tr>
               </thead>
@@ -548,21 +548,21 @@ function PurchaseOrderForm({ initial, onSubmit, loading, projects, suppliers, ca
           <div className="border-t border-gray-200 bg-gray-50 px-4 py-3">
             <div className="flex items-end justify-end gap-8">
               <div className="text-right">
-                <div className="text-xs text-gray-400 mb-0.5">Total Baris</div>
+                <div className="text-xs text-gray-400 mb-0.5">Total Lines</div>
                 <div className="text-sm font-medium text-gray-600">{items.length} item</div>
               </div>
               <div className="text-right">
-                <div className="text-xs text-gray-400 mb-0.5">Total Harga Bon</div>
+                <div className="text-xs text-gray-400 mb-0.5">Total Invoice Amount</div>
                 <div className="text-sm font-semibold text-gray-700">{formatRupiah(grandGross)}</div>
               </div>
               {grandDiscount > 0 && (
                 <div className="text-right">
-                  <div className="text-xs text-emerald-500 mb-0.5">Keuntungan Diskon</div>
+                  <div className="text-xs text-emerald-500 mb-0.5">Discount Profit</div>
                   <div className="text-sm font-semibold text-emerald-600">+ {formatRupiah(grandDiscount)}</div>
                 </div>
               )}
               <div className="text-right border-l border-gray-300 pl-8">
-                <div className="text-xs text-gray-400 mb-0.5">Total Dibayarkan</div>
+                <div className="text-xs text-gray-400 mb-0.5">Total Paid</div>
                 <div className="text-base font-bold text-emerald-700">{formatRupiah(grandNet)}</div>
               </div>
             </div>
@@ -672,11 +672,11 @@ export default function Materials() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">
-            Pembelian Material
+            Purchase Orders
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            {orders.length} purchase order ·{" "}
-            {orders.filter((o) => !o.is_paid).length} belum dibayar
+            {orders.length} purchase orders ·{" "}
+            {orders.filter((o) => !o.is_paid).length} not paid
           </p>
         </div>
         <Button
@@ -686,7 +686,7 @@ export default function Materials() {
             setModalOpen(true);
           }}
         >
-          <Plus size={16} /> Tambah Purchase Order
+          <Plus size={16} /> Add Purchase Order
         </Button>
       </div>
 
@@ -694,20 +694,20 @@ export default function Materials() {
       {orders.length > 0 && (
         <div className="grid grid-cols-3 gap-3">
           <div className="bg-white border border-gray-200 rounded-xl p-4">
-            <p className="text-xs text-gray-400 mb-1">Total Harga Bon</p>
+            <p className="text-xs text-gray-400 mb-1">Total Invoices Amount</p>
             <p className="text-lg font-semibold text-gray-900">
               {formatRupiah(totalGross)}
             </p>
           </div>
           <div className="bg-white border border-gray-200 rounded-xl p-4">
-            <p className="text-xs text-gray-400 mb-1">Total Dibayarkan</p>
+            <p className="text-xs text-gray-400 mb-1">Total Paid</p>
             <p className="text-lg font-semibold text-gray-900">
               {formatRupiah(totalNet)}
             </p>
           </div>
           <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
             <p className="text-xs text-emerald-600 mb-1">
-              Total Keuntungan Diskon
+              Total Discount Profit
             </p>
             <p className="text-lg font-semibold text-emerald-700">
               {formatRupiah(totalDiscount)}
@@ -723,7 +723,7 @@ export default function Materials() {
           onChange={(e) => setFilterProject(e.target.value)}
           className="text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 w-48"
         >
-          <option value="">Semua Proyek</option>
+          <option value="">All Projects</option>
           {projects.map((p) => (
             <option key={p.id} value={p.id}>
               {p.project_name}
@@ -732,9 +732,9 @@ export default function Materials() {
         </select>
         <div className="flex gap-1.5">
           {[
-            { l: "Semua", v: "" },
-            { l: "Belum Bayar", v: "false" },
-            { l: "Sudah Bayar", v: "true" },
+            { l: "All", v: "" },
+            { l: "Not Paid", v: "false" },
+            { l: "Paid", v: "true" },
           ].map((f) => (
             <button
               key={f.v}
@@ -760,7 +760,7 @@ export default function Materials() {
         <Card>
           <div className="text-center py-12">
             <Package size={32} className="mx-auto text-gray-300 mb-3" />
-            <p className="text-sm text-gray-400">Belum ada Purchase Order.</p>
+            <p className="text-sm text-gray-400">No purchase orders found.</p>
           </div>
         </Card>
       ) : (
@@ -799,10 +799,10 @@ export default function Materials() {
                     </span>
                   </div>
 
-                  {/* Proyek */}
+                  {/* Project */}
                   <div className="flex flex-col justify-center px-4 py-3 flex-1 min-w-0">
                     <span className="text-xs text-gray-400 mb-0.5 flex items-center gap-1">
-                      <Building2 size={11} /> Proyek
+                      <Building2 size={11} /> Project
                     </span>
                     <span className="text-sm font-medium text-gray-900 truncate">
                       {project?.project_name || (
@@ -811,30 +811,30 @@ export default function Materials() {
                     </span>
                   </div>
 
-                  {/* Tanggal */}
+                  {/* Date */}
                   <div className="flex flex-col justify-center px-4 py-3 min-w-30">
                     <span className="text-xs text-gray-400 mb-0.5 flex items-center gap-1">
-                      <CalendarDays size={11} /> Tanggal
+                      <CalendarDays size={11} /> Date
                     </span>
                     <span className="text-sm text-gray-700">
                       {formatDate(order.purchase_date)}
                     </span>
                   </div>
 
-                  {/* Dibayar oleh */}
+                  {/* Paid By */}
                   <div className="flex flex-col justify-center px-4 py-3 min-w-27.5">
                     <span className="text-xs text-gray-400 mb-0.5 flex items-center gap-1">
-                      <CreditCard size={11} /> Dibayar Oleh
+                      <CreditCard size={11} /> Paid By
                     </span>
                     <span className="text-sm text-gray-700">
                       {paidByLabel[order.paid_by] || "-"}
                     </span>
                   </div>
 
-                  {/* Bon */}
+                  {/* Receipt */}
                   <div className="flex flex-col justify-center px-4 py-3 min-w-27.5">
                     <span className="text-xs text-gray-400 mb-0.5 flex items-center gap-1">
-                      <FileText size={11} /> Bon
+                      <FileText size={11} /> Receipt
                     </span>
                     <span className="text-sm text-gray-700">
                       {order.has_receipt ? (
@@ -852,14 +852,14 @@ export default function Materials() {
                   <div className="flex flex-col justify-center px-4 py-3 min-w-22.5">
                     <span className="text-xs text-gray-400 mb-1">Status</span>
                     <Badge color={order.is_paid ? "green" : "red"}>
-                      {order.is_paid ? "Lunas" : "Hutang"}
+                      {order.is_paid ? "Paid" : "Not Paid"}
                     </Badge>
                   </div>
 
-                  {/* Total Bon */}
+                  {/* Invoice Total */}
                   <div className="flex flex-col justify-center px-4 py-3 min-w-32.5 text-right">
                     <span className="text-xs text-gray-400 mb-0.5">
-                      Total Bon
+                      Invoice Total
                     </span>
                     <span className="text-sm font-semibold text-gray-800">
                       {formatRupiah(order.total_gross)}
@@ -871,10 +871,10 @@ export default function Materials() {
                     )}
                   </div>
 
-                  {/* Dibayarkan */}
+                  {/* Paid Amount */}
                   <div className="flex flex-col justify-center px-4 py-3 min-w-32.5 text-right bg-gray-50">
                     <span className="text-xs text-gray-400 mb-0.5">
-                      Dibayarkan
+                      Paid Amount
                     </span>
                     <span className="text-sm font-bold text-emerald-700">
                       {formatRupiah(order.total_net)}
@@ -893,14 +893,14 @@ export default function Materials() {
                     <button
                       onClick={() => handleDelete(order.id)}
                       className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
-                      title="Hapus"
+                      title="Delete"
                     >
                       <Trash2 size={14} />
                     </button>
                     <button
                       onClick={() => setExpandedId(isExp ? null : order.id)}
                       className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-all"
-                      title={isExp ? "Tutup" : "Lihat Barang"}
+                      title={isExp ? "Close" : "View Items"}
                     >
                       {isExp ? (
                         <ChevronUp size={14} />
@@ -921,25 +921,25 @@ export default function Materials() {
                             #
                           </th>
                           <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">
-                            Nama Barang
+                            Item Name
                           </th>
                           <th className="text-right px-4 py-2.5 text-xs font-medium text-gray-500 w-20">
-                            Qty
+                            Quantity
                           </th>
                           <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 w-16">
-                            Satuan
+                            Unit
                           </th>
                           <th className="text-right px-4 py-2.5 text-xs font-medium text-gray-500 w-32">
-                            Harga Satuan
+                            Unit Price
                           </th>
                           <th className="text-right px-4 py-2.5 text-xs font-medium text-gray-500 w-28">
-                            Diskon/Sat
+                            Discount/Unit
                           </th>
                           <th className="text-right px-4 py-2.5 text-xs font-medium text-gray-500 w-32">
-                            Subtotal Bon
+                            Invoice Subtotal
                           </th>
                           <th className="text-right px-4 py-2.5 text-xs font-medium text-gray-500 w-32">
-                            Dibayarkan
+                            Paid Amount
                           </th>
                         </tr>
                       </thead>
@@ -1003,7 +1003,7 @@ export default function Materials() {
                               colSpan={7}
                               className="px-4 py-2 text-right text-xs text-emerald-600"
                             >
-                              Keuntungan diskon dari supplier
+                              Total Discount Profit from supplier
                             </td>
                             <td className="px-4 py-2 text-right text-xs font-semibold text-emerald-700">
                               + {formatRupiah(order.total_discount)}
@@ -1015,7 +1015,7 @@ export default function Materials() {
                     {order.notes && (
                       <div className="px-4 py-2.5 border-t border-gray-100 bg-amber-50">
                         <span className="text-xs text-amber-600 font-medium">
-                          Catatan:{" "}
+                          Notes:{" "}
                         </span>
                         <span className="text-xs text-amber-800 italic">
                           {order.notes}
@@ -1040,7 +1040,7 @@ export default function Materials() {
         title={
           editData
             ? `Edit PO-${String(editData.id).padStart(5, "0")}`
-            : "Tambah Purchase Order"
+            : "Add Purchase Order"
         }
         size="xl"
       >

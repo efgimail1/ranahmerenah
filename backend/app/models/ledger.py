@@ -20,6 +20,8 @@ class LedgerEntry(Base):
     entry_date = Column(Date, nullable=False)
     entry_type = Column(Enum(EntryType), nullable=False)
     description = Column(String(255), nullable=False)
+    bank_account = Column(String(50), nullable=True)
+    project_id   = Column(Integer, ForeignKey("projects.id"), nullable=True)
 
     # income
     received_from = Column(String(150))
