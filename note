@@ -1,0 +1,6 @@
+1. master data tukang, tipe upah. ini tergantung proyek nya. jadi proyek A tukangnya bisa harian, proyek B tukangnya bisa borongan.
+2. di master data tukang bisa melihat tukang itu lagi kerja di proyek apa.
+3. daftar proyek bisa input data tukang, formnya seperti pembelian material header detail gitu. jadi nanti di header nya data proyek, terus detailnya itu ada tab tabnya lagi buat input termin, buat input data pekerja.
+4. pembelian material :
+ - tambahkan kolom jatuh tempo
+5. saya butuh menginput data harga. jadi supplier A ada barang apa saja, harganya berapa, ini gunanya untuk membandingkan harga antar supplier. lebih baik katalog barang di revisi atau membuat modul baru ?
