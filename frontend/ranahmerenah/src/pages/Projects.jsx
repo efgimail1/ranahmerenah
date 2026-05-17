@@ -133,6 +133,54 @@ function TabPayments({
     notes: "",
   });
 
+  const [savingTermIdx, setSavingTermIdx] = useState(null);
+
+  const saveSingleTerm = async (i, pay) => {
+    // Validasi
+    if (!pay.term_type) return toast.error("Term type is required");
+    if (!pay.amount && !pay.percentage)
+      return toast.error("Amount or percentage is required");
+
+    setSavingTermIdx(i);
+    try {
+      const payload = {
+        term_type: pay.term_type,
+        term_label: pay.term_label || null,
+        percentage: pay.percentage ? parseFloat(pay.percentage) : null,
+        amount: pay.amount ? parseFloat(parseCurrency(pay.amount)) : null,
+        due_date: pay.due_date || null,
+        paid_date: pay.paid_date || null,
+        status: pay.status || "unpaid",
+        notes: pay.notes || null,
+      };
+
+      const saved = await projectsApi.addPayment(projectId, payload);
+
+      // Update baris di state dengan data dari backend (sekarang punya id)
+      setPayments((prev) =>
+        prev.map((it, idx) =>
+          idx === i
+            ? {
+                ...it,
+                id: saved.id,
+                amount_paid: saved.amount_paid
+                  ? String(Math.round(parseFloat(saved.amount_paid)))
+                  : "0",
+                status: saved.status || "unpaid",
+              }
+            : it,
+        ),
+      );
+
+      toast.success("Payment term saved!");
+      if (onDataRefresh) await onDataRefresh();
+    } catch (e) {
+      toast.error(e.message || "Failed to save term");
+    } finally {
+      setSavingTermIdx(null);
+    }
+  };
+
   const addRow = () =>
     setPayments((p) => [
       ...p,
@@ -177,47 +225,52 @@ function TabPayments({
   const net_pay = gross_pay - qris_fee;
 
   const recordMutation = useMutation({
-  mutationFn: (data) => ledgerApi.createIncome(data),
-  onSuccess: async () => {
-    qc.invalidateQueries({ queryKey: ['projects'] })
-    qc.invalidateQueries({ queryKey: ['ledger'] })
-    qc.invalidateQueries({ queryKey: ['ledger-summary'] })
-    qc.invalidateQueries({ queryKey: ['dashboard-summary'] })
-    setRecordFor(null)
-    setPayForm({
-      entry_date: '', gross_amount: '', payment_method: 'transfer',
-      bank_account: '', description: '', notes: ''
-    })
-    toast.success('Payment recorded!')
+    mutationFn: (data) => ledgerApi.createIncome(data),
+    onSuccess: async () => {
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      qc.invalidateQueries({ queryKey: ["ledger"] });
+      qc.invalidateQueries({ queryKey: ["ledger-summary"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-summary"] });
+      setRecordFor(null);
+      setPayForm({
+        entry_date: "",
+        gross_amount: "",
+        payment_method: "transfer",
+        bank_account: "",
+        description: "",
+        notes: "",
+      });
+      toast.success("Payment recorded!");
 
-    // ← KUNCI: refresh data project lalu update payments state
-    if (onDataRefresh) {
-      const fresh = await onDataRefresh()
-      if (fresh?.payments) {
-        setPayments(parsePayments(fresh))
+      // ← KUNCI: refresh data project lalu update payments state
+      if (onDataRefresh) {
+        const fresh = await onDataRefresh();
+        if (fresh?.payments) {
+          setPayments(parsePayments(fresh));
+        }
       }
-    }
-  },
-  onError: (e) => toast.error(e.message),
-})
+    },
+    onError: (e) => toast.error(e.message),
+  });
 
   const handleRecord = () => {
-  if (!payForm.entry_date) return toast.error('Payment date is required')
-  if (!gross_pay) return toast.error('Amount is required')
-  recordMutation.mutate({
-    entry_date:         payForm.entry_date,
-    entry_type:         'income',
-    description:        payForm.description || `Payment — ${recordFor.term_label || 'Term'}`,
-    received_from:      '',
-    gross_amount:       gross_pay,
-    payment_method:     payForm.payment_method,
-    bank_account:       payForm.bank_account || null,
-    is_qris:            isQris,
-    project_payment_id: recordFor.id,
-    project_id:         projectId || null,
-    notes:              payForm.notes || null,
-  })
-}
+    if (!payForm.entry_date) return toast.error("Payment date is required");
+    if (!gross_pay) return toast.error("Amount is required");
+    recordMutation.mutate({
+      entry_date: payForm.entry_date,
+      entry_type: "income",
+      description:
+        payForm.description || `Payment — ${recordFor.term_label || "Term"}`,
+      received_from: "",
+      gross_amount: gross_pay,
+      payment_method: payForm.payment_method,
+      bank_account: payForm.bank_account || null,
+      is_qris: isQris,
+      project_payment_id: recordFor.id,
+      project_id: projectId || null,
+      notes: payForm.notes || null,
+    });
+  };
 
   const totalPct = payments.reduce(
     (s, p) => s + (parseFloat(p.percentage) || 0),
@@ -448,26 +501,56 @@ function TabPayments({
                         />
                       </td>
 
+                      {/* Actions */}
                       <td className="px-2 py-1.5">
                         <div className="flex items-center gap-1 justify-end">
-                          {/* Record payment — only for saved terms with an id */}
-                          {pay.id && pay.status !== "paid" && (
-                            <button
-                              type="button"
-                              onClick={() => setRecordFor(pay)}
-                              title="Record payment"
-                              className="p-1 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-100 rounded transition-all opacity-0 group-hover:opacity-100"
-                            >
-                              <TrendingUp size={13} />
-                            </button>
+                          {/* Baris baru (belum punya id) — tampilkan Save & Cancel */}
+                          {!pay.id ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => saveSingleTerm(i, pay)}
+                                disabled={savingTermIdx === i}
+                                title="Save term"
+                                className="p-1 text-emerald-600 hover:bg-emerald-100 rounded transition-all"
+                              >
+                                {savingTermIdx === i ? (
+                                  <div className="animate-spin rounded-full h-3 w-3 border-2 border-emerald-600 border-t-transparent" />
+                                ) : (
+                                  <Save size={13} />
+                                )}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => remove(i)}
+                                title="Cancel"
+                                className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-all"
+                              >
+                                <X size={13} />
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              {/* Baris lama (sudah punya id) — Record Payment & Delete */}
+                              {pay.status !== "paid" && (
+                                <button
+                                  type="button"
+                                  onClick={() => setRecordFor(pay)}
+                                  title="Record payment"
+                                  className="p-1 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-100 rounded transition-all opacity-0 group-hover:opacity-100"
+                                >
+                                  <TrendingUp size={13} />
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => remove(i)}
+                                className="p-1 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded transition-all opacity-0 group-hover:opacity-100"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </>
                           )}
-                          <button
-                            type="button"
-                            onClick={() => remove(i)}
-                            className="p-1 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded transition-all opacity-0 group-hover:opacity-100"
-                          >
-                            <Trash2 size={13} />
-                          </button>
                         </div>
                       </td>
                     </tr>
@@ -1436,16 +1519,16 @@ export default function Projects() {
   // Refresh project data after recording payment
   // Called by TabPayments after successful payment record
   // BARU — return fresh data
-const handleRefreshProject = async () => {
-  if (!editData?.id) return
-  try {
-    const fresh = await projectsApi.getById(editData.id)
-    setEditData(fresh)
-    return fresh  // ← WAJIB: return supaya TabPayments bisa update state
-  } catch {
-    // ignore
-  }
-}
+  const handleRefreshProject = async () => {
+    if (!editData?.id) return;
+    try {
+      const fresh = await projectsApi.getById(editData.id);
+      setEditData(fresh);
+      return fresh; // ← WAJIB: return supaya TabPayments bisa update state
+    } catch {
+      // ignore
+    }
+  };
 
   const filters = [
     { label: "All", value: "" },
