@@ -27,15 +27,18 @@ def get_all_projects(
 
     result = []
     for p in projects:
+        architect_fee = float(p.architect_fee or 0)
+
+        # total_paid = sum amount_paid dari semua terms (actual yang sudah masuk)
         total_paid = sum(
-            float(pay.amount or 0)
+            float(pay.amount_paid or 0)
             for pay in p.payments
-            if pay.status == PaymentStatus.paid
         )
-        total_outstanding = float(p.architect_fee or 0) - total_paid
-        paid_count = sum(1 for pay in p.payments if pay.status == PaymentStatus.paid)
-        total_terms = len(p.payments)
-        progress = (paid_count / total_terms * 100) if total_terms > 0 else 0
+
+        total_outstanding = max(architect_fee - total_paid, 0)
+
+        # progress = persentase terkumpul dari total architect fee
+        progress = (total_paid / architect_fee * 100) if architect_fee > 0 else 0
 
         result.append(ProjectSummary(
             id=p.id,
@@ -44,10 +47,10 @@ def get_all_projects(
             location=p.location,
             status=p.status,
             rab_value=p.rab_value or 0,
-            architect_fee=p.architect_fee or 0,
+            architect_fee=architect_fee,
             total_paid=total_paid,
             total_outstanding=total_outstanding,
-            progress_percent=round(progress, 1),
+            progress_percent=round(min(progress, 100), 1),
             payments=p.payments,
         ))
     return result

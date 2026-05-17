@@ -1,34 +1,6 @@
-Kita bedah satu satu per projects dulu deh.
+cd .\ranahmerenah\
+ npm run dev 
 
-Revisi utk pages Projects :
-
-
-
-
-
-maksud saya di tab itu seperti contoh ini. detail project dulu di header. kemudian di detail itu ada tab seperti tab charges, part order line dari contoh IFS tersebut. jadi kalau ganti2 tabnya headernya tetap bisa terlihat.
-
-
-
-utk role_options biarkan menggunakan bahasa indonesia
-
-
-
-aku sudah coba assign workers di tab workers tapi tidak bertambah
-
-
-
-utk payment term apakah bisa ngelink dari ledger (atau best practicenya gimana). lebih baik dari payment term link ke ledger atau dari ledger link ke payment term ?
-
-
-
-pada tab payment terms tambahkan tanggal bayar, kalau bayarny tidak sama dengan due date.
-
-
-
-lalu pada tab payment kalau bayarnya partial apakah bisa di infokana berapa nominalny ?
-
-tolong revisi tersebut di bikin secara profesional dan di pikirkan baik2 agar semua alurnya nyambung.
-
-
-
+cd .\backend\
+  .\venv\Scripts\Activate.ps1    
+  uvicorn app.main:app --reload     

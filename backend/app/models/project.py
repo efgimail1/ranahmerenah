@@ -53,6 +53,7 @@ class ProjectPayment(Base):
     amount = Column(Numeric(15, 2))        # nominal
     due_date = Column(Date)
     paid_date = Column(Date)
+    amount_paid = Column(Numeric(15, 2), default=0)
     status = Column(Enum(PaymentStatus), default=PaymentStatus.unpaid)
     notes = Column(Text)
 

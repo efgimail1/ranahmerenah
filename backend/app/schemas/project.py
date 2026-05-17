@@ -13,7 +13,10 @@ class ProjectPaymentBase(BaseModel):
     percentage: Optional[Decimal] = None
     amount: Optional[Decimal] = None
     due_date: Optional[date] = None
+    paid_date: Optional[date] = None
+    status: Optional[PaymentStatus] = None
     notes: Optional[str] = None
+    amount_paid: Optional[Decimal] = None
 
 class ProjectPaymentCreate(ProjectPaymentBase):
     pass
@@ -26,12 +29,13 @@ class ProjectPaymentUpdate(BaseModel):
     paid_date: Optional[date] = None
     status: Optional[PaymentStatus] = None
     notes: Optional[str] = None
-
+    amount_paid: Optional[Decimal] = None
 class ProjectPaymentResponse(ProjectPaymentBase):
     id: int
     project_id: int
     paid_date: Optional[date] = None
     status: PaymentStatus
+    amount_paid: Optional[Decimal] = Decimal("0") 
 
     class Config:
         from_attributes = True
