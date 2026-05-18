@@ -75,6 +75,9 @@ class ProjectUpdate(BaseModel):
 class ProjectResponse(ProjectBase):
     id: int
     payments: List[ProjectPaymentResponse] = []
+    total_paid:        Optional[Decimal] = Decimal("0")
+    total_outstanding: Optional[Decimal] = Decimal("0")
+    progress_percent:  Optional[float]   = 0.0
 
     class Config:
         from_attributes = True

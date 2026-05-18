@@ -203,32 +203,32 @@ function TabPayments({
     );
 
   // BARU — block jika sudah ada pembayaran
-const remove = (i) => {
-  const pay = payments[i]
+  const remove = (i) => {
+    const pay = payments[i];
 
-  // Baris baru yang belum disimpan — boleh hapus langsung
-  if (!pay.id) {
-    setPayments((p) => p.filter((_, idx) => idx !== i))
-    return
-  }
+    // Baris baru yang belum disimpan — boleh hapus langsung
+    if (!pay.id) {
+      setPayments((p) => p.filter((_, idx) => idx !== i));
+      return;
+    }
 
-  const amtPaid = parseFloat(pay.amount_paid || 0)
+    const amtPaid = parseFloat(pay.amount_paid || 0);
 
-  // Sudah ada pembayaran — tidak boleh hapus
-  if (amtPaid > 0) {
-    toast.error(
-      `Cannot delete "${pay.term_label || 'this term'}" — it has received payments of ${formatRupiah(amtPaid)}. Reverse the payment in Ledger first.`,
-      { duration: 5000 }
-    )
-    return
-  }
+    // Sudah ada pembayaran — tidak boleh hapus
+    if (amtPaid > 0) {
+      toast.error(
+        `Cannot delete "${pay.term_label || "this term"}" — it has received payments of ${formatRupiah(amtPaid)}. Reverse the payment in Ledger first.`,
+        { duration: 5000 },
+      );
+      return;
+    }
 
-  // Belum ada pembayaran — konfirmasi lalu hapus
-  if (confirm(`Delete payment term "${pay.term_label || 'this term'}"?`)) {
-    setDeletedPaymentIds((prev) => [...prev, pay.id])
-    setPayments((p) => p.filter((_, idx) => idx !== i))
-  }
-}
+    // Belum ada pembayaran — konfirmasi lalu hapus
+    if (confirm(`Delete payment term "${pay.term_label || "this term"}"?`)) {
+      setDeletedPaymentIds((prev) => [...prev, pay.id]);
+      setPayments((p) => p.filter((_, idx) => idx !== i));
+    }
+  };
 
   const handlePct = (i, pct) => {
     set(i, "percentage", pct);
@@ -1175,9 +1175,9 @@ function ProjectDetail({ project, open, onClose, onSave, saving, onRefresh }) {
   ];
 
   const hLabel =
-    "text-xs font-medium text-gray-400 uppercase tracking-wide mb-1";
+    "text-xs font-medium text-gray-500 uppercase tracking-wide mb-1";
   const hInput =
-    "w-full text-sm text-gray-900 bg-transparent border-0 border-b border-dashed border-gray-300 focus:outline-none focus:border-emerald-500 pb-0.5";
+    "w-full text-sm text-gray-900 bg-transparent border-0 border-b border-gray-300 focus:outline-none focus:border-emerald-500 pb-0.5 transition-colors";
 
   return (
     <div
@@ -1185,16 +1185,16 @@ function ProjectDetail({ project, open, onClose, onSave, saving, onRefresh }) {
       style={{ background: "#f9fafb" }}
     >
       {/* Top Navigation Bar */}
-      <div className="flex items-center justify-between px-5 py-2.5 bg-gray-800 shrink-0">
+      <div className="flex items-center justify-between px-5 py-3 bg-white border-b border-gray-200 shrink-0">
         <div className="flex items-center gap-2 text-sm">
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-white text-xs"
+            className="text-gray-400 hover:text-emerald-600 text-xs font-medium transition-colors"
           >
             Projects
           </button>
-          <span className="text-gray-600">›</span>
-          <span className="text-white font-medium">
+          <span className="text-gray-300">›</span>
+          <span className="text-gray-700 font-medium">
             {project
               ? `PRJ-${String(project.id).padStart(5, "0")} — ${project.project_name}`
               : "New Project"}
@@ -1228,18 +1228,18 @@ function ProjectDetail({ project, open, onClose, onSave, saving, onRefresh }) {
         {/* Sticky Header */}
         <div className="bg-white border-b border-gray-200 shrink-0">
           {/* Row 1: ID + Status + Stats */}
-          <div className="flex items-center gap-4 px-5 py-2 bg-gray-50 border-b border-gray-200">
+          <div className="flex items-center gap-4 px-5 py-2.5 bg-gray-50 border-b border-gray-200">
             {project && (
-              <span className="font-mono text-xs bg-white border border-gray-200 rounded px-2 py-0.5 text-gray-500">
+              <span className="font-mono text-xs bg-white border border-gray-200 rounded-md px-2 py-1 text-emerald-700 font-semibold">
                 PRJ-{String(project.id).padStart(5, "0")}
               </span>
             )}
-            <div className="flex items-center gap-2 flex-1">
-              <span className="text-xs text-gray-400">Status:</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500 font-medium">Status:</span>
               <select
                 value={form.status}
                 onChange={(e) => set("status", e.target.value)}
-                className="text-xs border border-gray-300 rounded px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                className="text-xs border border-gray-300 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium"
               >
                 <option value="pending">Pending</option>
                 <option value="in_progress">In Progress</option>
@@ -1248,24 +1248,49 @@ function ProjectDetail({ project, open, onClose, onSave, saving, onRefresh }) {
                 <option value="cancelled">Cancelled</option>
               </select>
             </div>
+
+            {/* Spacer */}
+            <div className="flex-1" />
+
+            {/* Collected / Outstanding / Progress — kanan atas */}
             {project && (
-              <div className="flex items-center gap-6 text-xs">
+              <div className="flex items-center gap-5">
                 <div className="text-right">
-                  <div className="text-gray-400">Collected</div>
-                  <div className="font-semibold text-emerald-700">
-                    {formatRupiah(project.total_paid)}
+                  <div className="text-xs text-gray-400 font-medium uppercase tracking-wide">
+                    Collected
+                  </div>
+                  <div className="text-sm font-bold text-emerald-700">
+                    {project.total_paid != null
+                      ? formatRupiah(project.total_paid)
+                      : "—"}
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-gray-400">Outstanding</div>
-                  <div className="font-semibold text-red-500">
-                    {formatRupiah(project.total_outstanding)}
+                  <div className="text-xs text-gray-400 font-medium uppercase tracking-wide">
+                    Outstanding
+                  </div>
+                  <div className="text-sm font-bold text-red-500">
+                    {project.total_outstanding != null
+                      ? formatRupiah(project.total_outstanding)
+                      : "—"}
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className="text-gray-400">Progress</div>
-                  <div className="font-semibold text-gray-900">
-                    {project.progress_percent}%
+                <div className="text-right min-w-20">
+                  <div className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-1">
+                    Progress
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="h-1.5 w-16 bg-gray-200 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-emerald-500 rounded-full transition-all"
+                        style={{ width: `${project.progress_percent || 0}%` }}
+                      />
+                    </div>
+                    <span className="text-xs font-bold text-emerald-700">
+                      {project.progress_percent != null
+                        ? `${project.progress_percent}%`
+                        : "—"}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1400,8 +1425,8 @@ function ProjectDetail({ project, open, onClose, onSave, saving, onRefresh }) {
           </div>
         </div>
 
-        {/* Tab Bar */}
-        <div className="flex border-b border-gray-200 bg-white shrink-0">
+        {/* Tab Bar — sama persis dengan style tab di halaman lain */}
+        <div className="flex border-b border-gray-200 bg-white shrink-0 px-0">
           {tabs.map((tab) => (
             <button
               key={tab.id}
@@ -1409,14 +1434,14 @@ function ProjectDetail({ project, open, onClose, onSave, saving, onRefresh }) {
               onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-2 px-6 py-3 text-sm font-medium border-b-2 transition-all ${
                 activeTab === tab.id
-                  ? "border-emerald-600 text-emerald-700 bg-emerald-50/50"
+                  ? "border-emerald-600 text-emerald-700"
                   : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50"
               }`}
             >
               <tab.icon size={15} />
               {tab.label}
               {tab.count > 0 && (
-                <span className="ml-1 text-xs bg-emerald-100 text-emerald-700 rounded-full px-1.5 py-0.5">
+                <span className="ml-1 text-xs bg-emerald-100 text-emerald-700 rounded-full px-1.5 py-0.5 font-medium">
                   {tab.count}
                 </span>
               )}

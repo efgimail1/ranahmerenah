@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session, joinedload
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import JSONResponse
 from sqlalchemy import func
 from typing import List, Optional
 from app.database import get_db
@@ -83,12 +84,54 @@ def create_project(payload: ProjectCreate, db: Session = Depends(get_db)):
     return project
 
 
-@router.get("/{project_id}", response_model=ProjectResponse)
+@router.get("/{project_id}")
 def get_project(project_id: int, db: Session = Depends(get_db)):
-    project = db.query(Project).filter(Project.id == project_id).first()
+    project = db.query(Project).options(
+        joinedload(Project.payments)
+    ).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    return project
+
+    architect_fee = float(project.architect_fee or 0)
+    total_paid    = sum(float(pay.amount_paid or 0) for pay in project.payments)
+    outstanding   = max(architect_fee - total_paid, 0)
+    progress      = min((total_paid / architect_fee * 100), 100) if architect_fee > 0 else 0
+
+    # Build response manually
+    result = {
+        "id":                project.id,
+        "client_name":       project.client_name,
+        "client_phone":      project.client_phone,
+        "project_name":      project.project_name,
+        "location":          project.location,
+        "received_date":     project.received_date,
+        "start_date":        project.start_date,
+        "end_date":          project.end_date,
+        "rab_value":         project.rab_value,
+        "architect_fee":     project.architect_fee,
+        "status":            project.status,
+        "notes":             project.notes,
+        "total_paid":        total_paid,
+        "total_outstanding": outstanding,
+        "progress_percent":  round(progress, 1),
+        "payments": [
+            {
+                "id":          p.id,
+                "project_id":  p.project_id,
+                "term_type":   p.term_type,
+                "term_label":  p.term_label,
+                "percentage":  p.percentage,
+                "amount":      p.amount,
+                "due_date":    p.due_date,
+                "paid_date":   p.paid_date,
+                "amount_paid": p.amount_paid,
+                "status":      p.status,
+                "notes":       p.notes,
+            }
+            for p in project.payments
+        ]
+    }
+    return result
 
 
 @router.put("/{project_id}", response_model=ProjectResponse)
