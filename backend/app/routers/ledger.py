@@ -162,5 +162,38 @@ def delete_entry(entry_id: int, db: Session = Depends(get_db)):
     entry = db.query(LedgerEntry).filter(LedgerEntry.id == entry_id).first()
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
+
+    payment_id = entry.project_payment_id
+
     db.delete(entry)
+    db.flush()
+
+    # Recalculate amount_paid jika linked ke payment term
+    if payment_id:
+        payment = db.query(ProjectPayment).filter(
+            ProjectPayment.id == payment_id
+        ).first()
+        if payment:
+            new_total = db.query(
+                func.coalesce(func.sum(LedgerEntry.net_amount), 0)
+            ).filter(
+                LedgerEntry.project_payment_id == payment_id,
+                LedgerEntry.entry_type == EntryType.income,
+            ).scalar()
+
+            new_total   = Decimal(str(new_total))
+            term_amount = Decimal(str(payment.amount or 0))
+            payment.amount_paid = new_total
+
+            if term_amount > 0:
+                if new_total >= term_amount:
+                    payment.status = PaymentStatus.paid
+                elif new_total > 0:
+                    payment.status = PaymentStatus.partial
+                else:
+                    payment.status = PaymentStatus.unpaid
+                    payment.paid_date = None
+
+            db.add(payment)
+
     db.commit()

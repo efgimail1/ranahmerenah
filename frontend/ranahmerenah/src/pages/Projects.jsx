@@ -202,11 +202,33 @@ function TabPayments({
       p.map((it, idx) => (idx === i ? { ...it, [f]: v } : it)),
     );
 
-  const remove = (i) => {
-    const pay = payments[i];
-    if (pay.id) setDeletedPaymentIds((prev) => [...prev, pay.id]);
-    setPayments((p) => p.filter((_, idx) => idx !== i));
-  };
+  // BARU — block jika sudah ada pembayaran
+const remove = (i) => {
+  const pay = payments[i]
+
+  // Baris baru yang belum disimpan — boleh hapus langsung
+  if (!pay.id) {
+    setPayments((p) => p.filter((_, idx) => idx !== i))
+    return
+  }
+
+  const amtPaid = parseFloat(pay.amount_paid || 0)
+
+  // Sudah ada pembayaran — tidak boleh hapus
+  if (amtPaid > 0) {
+    toast.error(
+      `Cannot delete "${pay.term_label || 'this term'}" — it has received payments of ${formatRupiah(amtPaid)}. Reverse the payment in Ledger first.`,
+      { duration: 5000 }
+    )
+    return
+  }
+
+  // Belum ada pembayaran — konfirmasi lalu hapus
+  if (confirm(`Delete payment term "${pay.term_label || 'this term'}"?`)) {
+    setDeletedPaymentIds((prev) => [...prev, pay.id])
+    setPayments((p) => p.filter((_, idx) => idx !== i))
+  }
+}
 
   const handlePct = (i, pct) => {
     set(i, "percentage", pct);

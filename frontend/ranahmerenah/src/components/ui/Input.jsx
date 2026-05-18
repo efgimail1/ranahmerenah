@@ -13,7 +13,8 @@ export default function Input({ label, error, className, ...props }) {
           'placeholder:text-gray-400 focus:outline-none focus:ring-2',
           'focus:ring-emerald-500 focus:border-emerald-500 transition-all',
           error && 'border-red-400 focus:ring-red-400',
-          className
+          className,
+          props.disabled && 'bg-gray-100 text-gray-400 cursor-not-allowed opacity-75'
         )}
         {...props}
       />
@@ -46,8 +47,9 @@ export function Select({ label, error, children, className, ...props }) {
 }
 
 // Input khusus currency — tampil format 10.000.000
-export function CurrencyInput({ label, error, value, onChange, className, ...props }) {
+export function CurrencyInput({ label, error, value, onChange, disabled, className, ...props }) {
   const handleChange = (e) => {
+    if (disabled) return
     const raw = parseCurrency(e.target.value)
     onChange(raw) // kirim angka murni ke parent
   }
@@ -66,12 +68,14 @@ export function CurrencyInput({ label, error, value, onChange, className, ...pro
           inputMode="numeric"
           value={formatCurrencyInput(value)}
           onChange={handleChange}
+          disabled={disabled}
           className={clsx(
             'w-full rounded-lg border border-gray-300 pl-9 pr-3 py-2 text-sm text-gray-900',
             'placeholder:text-gray-400 focus:outline-none focus:ring-2',
             'focus:ring-emerald-500 focus:border-emerald-500 transition-all',
             error && 'border-red-400 focus:ring-red-400',
-            className
+            className,
+            disabled && 'bg-gray-100 text-gray-400 cursor-not-allowed opacity-75'
           )}
           {...props}
         />
