@@ -42,156 +42,196 @@ const methodLabel = {
 };
 
 // ─── Income Form ───────────────────────────────────────────
-function IncomeForm({
-  initial,
-  onSubmit,
-  loading,
-  projects,
-  isLinked = false,
-}) {
+function IncomeForm({ initial, onSubmit, loading, projects, isLinked = false }) {
   const [form, setForm] = useState(
-    initial
-      ? {
-          entry_date: toInputDate(initial.entry_date),
-          description: initial.description || "",
-          received_from: initial.received_from || "",
-          gross_amount: initial.gross_amount
-            ? String(Math.round(parseFloat(initial.gross_amount)))
-            : "",
-          payment_method: initial.payment_method || "transfer",
-          bank_account: initial.bank_account || "",
-          project_id: initial.project_id || "",
-          is_qris: initial.is_qris || false,
-          notes: initial.notes || "",
-        }
-      : {
-          entry_date: "",
-          description: "",
-          received_from: "",
-          gross_amount: "",
-          payment_method: "transfer",
-          bank_account: "",
-          project_id: "",
-          is_qris: false,
-          notes: "",
-        },
-  );
+    initial ? {
+      entry_date:         toInputDate(initial.entry_date),
+      description:        initial.description        || '',
+      received_from:      initial.received_from      || '',
+      gross_amount:       initial.gross_amount ? String(Math.round(parseFloat(initial.gross_amount))) : '',
+      payment_method:     initial.payment_method     || 'transfer',
+      bank_account:       initial.bank_account       || '',
+      project_id:         initial.project_id         || '',
+      project_payment_id: initial.project_payment_id || '',
+      is_qris:            initial.is_qris            || false,
+      notes:              initial.notes              || '',
+    } : {
+      entry_date: '', description: '', received_from: '',
+      gross_amount: '', payment_method: 'transfer',
+      bank_account: '', project_id: '', project_payment_id: '',
+      is_qris: false, notes: '',
+    }
+  )
 
-  const set = (f, v) => setForm((p) => ({ ...p, [f]: v }));
-  const gross = parseFloat(parseCurrency(form.gross_amount)) || 0;
-  const qrisFee = form.is_qris ? Math.round(gross * QRIS_FEE_RATE) : 0;
-  const netAmount = gross - qrisFee;
+  const set = (f, v) => setForm(p => ({ ...p, [f]: v }))
+  const gross     = parseFloat(parseCurrency(form.gross_amount)) || 0
+  const qrisFee   = form.is_qris ? Math.round(gross * QRIS_FEE_RATE) : 0
+  const netAmount = gross - qrisFee
+
+  // Load payment terms dari project yang dipilih
+  const selectedProject = projects.find(p => p.id === parseInt(form.project_id))
+  const paymentTerms    = selectedProject?.payments || []
+
+  // Auto-fill amount dari payment term yang dipilih
+  const handleTermSelect = (termId) => {
+    set('project_payment_id', termId)
+    if (termId) {
+      const term = paymentTerms.find(t => t.id === parseInt(termId))
+      if (term) {
+        const remaining = Math.max(
+          (parseFloat(term.amount) || 0) - (parseFloat(term.amount_paid) || 0),
+          0
+        )
+        // Auto-fill description jika belum diisi
+        if (!form.description) {
+          set('description', `Payment — ${term.term_label || 'Term'}`)
+        }
+        // Auto-fill amount dengan sisa yang belum dibayar
+        if (remaining > 0) {
+          set('gross_amount', String(Math.round(remaining)))
+        }
+      }
+    }
+  }
 
   const handleSubmit = (e) => {
-    e.preventDefault();
+    e.preventDefault()
     onSubmit({
       ...form,
-      entry_type: "income",
-      gross_amount: gross,
-      is_qris: form.is_qris,
-      project_id: form.project_id ? parseInt(form.project_id) : null,
-    });
-  };
+      entry_type:         'income',
+      gross_amount:       gross,
+      is_qris:            form.is_qris,
+      project_id:         form.project_id         ? parseInt(form.project_id)         : null,
+      project_payment_id: form.project_payment_id ? parseInt(form.project_payment_id) : null,
+    })
+  }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
       <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-widest">
         Income Details
       </h4>
-      {/* Tambah di atas form, setelah h4 */}
+
       {isLinked && (
         <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2">
           <AlertCircle size={14} className="text-amber-600 mt-0.5 shrink-0" />
           <div className="text-xs text-amber-700">
             <p className="font-semibold mb-0.5">Limited editing</p>
-            <p>
-              This entry is linked to a payment term. Amount and date cannot be
-              changed. To change the amount, void this entry and create a new
-              one.
-            </p>
+            <p>This entry is linked to a payment term. Amount and date cannot be changed. To change the amount, void this entry and create a new one.</p>
           </div>
         </div>
       )}
+
       <div className="grid grid-cols-2 gap-3">
-        <Input
-          label="Date *"
-          type="date"
-          value={form.entry_date}
-          onChange={(e) => set("entry_date", e.target.value)}
-          required
-          disabled={isLinked}
-        />
-        <Input
-          label="Received From *"
-          value={form.received_from}
-          onChange={(e) => set("received_from", e.target.value)}
-          disabled={isLinked}
-          placeholder="e.g. Mr. Budi — Villa Project"
-          required
-        />
-        <Input
-          label="Description *"
-          value={form.description}
-          onChange={(e) => set("description", e.target.value)}
+        <Input label="Date *" type="date" value={form.entry_date}
+          onChange={e => set('entry_date', e.target.value)}
+          required disabled={isLinked} />
+
+        <Input label="Received From *" value={form.received_from}
+          onChange={e => set('received_from', e.target.value)}
+          placeholder="e.g. Mr. Budi" required disabled={isLinked} />
+
+        <Input label="Description *" value={form.description}
+          onChange={e => set('description', e.target.value)}
           placeholder="e.g. Down Payment — Villa Project"
-          className="col-span-2"
-          required
-        />
-        <Select
-          label="Payment Method"
-          value={form.payment_method}
-          onChange={(e) => {
-            set("payment_method", e.target.value);
-            set("is_qris", e.target.value === "qris");
-          }}
-          disabled={isLinked}
-        >
-          {PAYMENT_METHOD_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
+          className="col-span-2" required />
+
+        <Select label="Payment Method" value={form.payment_method}
+          onChange={e => { set('payment_method', e.target.value); set('is_qris', e.target.value === 'qris') }}
+          disabled={isLinked}>
+          {PAYMENT_METHOD_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </Select>
-        <Select
-          label="Bank Account"
-          value={form.bank_account}
-          onChange={(e) => set("bank_account", e.target.value)}
-          disabled={isLinked}
-        >
+
+        <Select label="Bank Account" value={form.bank_account}
+          onChange={e => set('bank_account', e.target.value)}
+          disabled={isLinked}>
           <option value="">-- Select Bank --</option>
-          {BANK_OPTIONS.map((b) => (
-            <option key={b} value={b}>
-              {b}
-            </option>
-          ))}
+          {BANK_OPTIONS.map(b => <option key={b} value={b}>{b}</option>)}
         </Select>
-        <Select
-          label="Project"
-          value={form.project_id}
-          onChange={(e) => set("project_id", e.target.value)}
-          disabled={isLinked}
-        >
+
+        {/* Project — ketika berubah, reset payment term */}
+        <Select label="Project" value={form.project_id}
+          onChange={e => {
+            set('project_id', e.target.value)
+            set('project_payment_id', '') // reset term saat project berubah
+          }}
+          disabled={isLinked}>
           <option value="">-- Select Project --</option>
-          {projects.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.project_name}
-            </option>
-          ))}
+          {projects.map(p => <option key={p.id} value={p.id}>{p.project_name}</option>)}
         </Select>
-        <CurrencyInput
-          label="Gross Amount *"
-          value={form.gross_amount}
-          onChange={(v) => set("gross_amount", v)}
-          placeholder="0"
-          disabled={isLinked}
-        />
-        <Input
-          label="Notes"
-          value={form.notes}
-          onChange={(e) => set("notes", e.target.value)}
-          placeholder="optional"
-          className="col-span-2"
-        />
+
+        {/* Payment Term — hanya muncul jika project dipilih */}
+        {form.project_id && !isLinked && (
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-gray-700">
+              Payment Term
+              <span className="text-gray-400 font-normal ml-1">(optional)</span>
+            </label>
+            <select
+              value={form.project_payment_id}
+              onChange={e => handleTermSelect(e.target.value)}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
+            >
+              <option value="">-- No specific term --</option>
+              {paymentTerms.map(t => {
+                const amtPaid   = parseFloat(t.amount_paid || 0)
+                const termAmt   = parseFloat(t.amount || 0)
+                const remaining = Math.max(termAmt - amtPaid, 0)
+                const isPaid    = t.status === 'paid'
+                return (
+                  <option key={t.id} value={t.id} disabled={isPaid}>
+                    {t.term_label || `Term ${t.id}`}
+                    {' — '}
+                    {isPaid
+                      ? '✓ Paid'
+                      : `Remaining: ${new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(remaining)}`
+                    }
+                  </option>
+                )
+              })}
+            </select>
+
+            {/* Info box jika term dipilih */}
+            {form.project_payment_id && (() => {
+              const term      = paymentTerms.find(t => t.id === parseInt(form.project_payment_id))
+              if (!term) return null
+              const amtPaid   = parseFloat(term.amount_paid || 0)
+              const termAmt   = parseFloat(term.amount || 0)
+              const remaining = Math.max(termAmt - amtPaid, 0)
+              return (
+                <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-xs space-y-1 mt-1">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Term Amount</span>
+                    <span className="font-medium">{formatRupiah(termAmt)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Already Paid</span>
+                    <span className="font-medium text-emerald-600">{formatRupiah(amtPaid)}</span>
+                  </div>
+                  <div className="flex justify-between font-semibold border-t border-emerald-200 pt-1">
+                    <span className="text-gray-700">Remaining</span>
+                    <span className="text-emerald-700">{formatRupiah(remaining)}</span>
+                  </div>
+                </div>
+              )
+            })()}
+          </div>
+        )}
+
+        {/* Kalau project dipilih tapi tidak ada terms */}
+        {form.project_id && !isLinked && paymentTerms.length === 0 && (
+          <div className="flex items-center">
+            <p className="text-xs text-gray-400 italic">No payment terms configured for this project.</p>
+          </div>
+        )}
+
+        <CurrencyInput label="Gross Amount *" value={form.gross_amount}
+          onChange={v => set('gross_amount', v)}
+          placeholder="0" disabled={isLinked} />
+
+        <Input label="Notes" value={form.notes}
+          onChange={e => set('notes', e.target.value)}
+          placeholder="optional" className="col-span-2" />
       </div>
 
       {form.is_qris && gross > 0 && (
@@ -205,9 +245,7 @@ function IncomeForm({
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-gray-600">QRIS fee (0.3%)</span>
-            <span className="font-medium text-red-500">
-              - {formatRupiah(qrisFee)}
-            </span>
+            <span className="font-medium text-red-500">- {formatRupiah(qrisFee)}</span>
           </div>
           <div className="flex justify-between text-sm font-semibold border-t border-amber-200 pt-1.5">
             <span className="text-gray-800">Net amount received</span>
@@ -218,11 +256,11 @@ function IncomeForm({
 
       <div className="flex justify-end pt-2 border-t border-gray-100">
         <Button type="submit" variant="primary" loading={loading}>
-          {initial ? "Save Changes" : "Save Income"}
+          {initial ? 'Save Changes' : 'Save Income'}
         </Button>
       </div>
     </form>
-  );
+  )
 }
 
 // ─── Expense Form ──────────────────────────────────────────
