@@ -5,7 +5,7 @@ import Button from '../components/ui/Button'
 import Badge from '../components/ui/Badge'
 import Card from '../components/ui/Card'
 import Modal from '../components/ui/Modal'
-import Input, { Select, CurrencyInput } from '../components/ui/Input'
+import Input, { Select } from '../components/ui/Input'
 import { formatRupiah, WORKER_ROLE, RATE_TYPE } from '../utils/format'
 import { Plus, Pencil, Trash2, Phone, HardHat } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -23,12 +23,6 @@ const ROLE_OPTIONS = [
   { value: 'other', label: 'Lainnya' },
 ]
 
-const RATE_OPTIONS = [
-  { value: 'daily', label: 'Daily' },
-  { value: 'per_unit', label: 'Per Unit' },
-  { value: 'fixed', label: 'Fixed' },
-]
-
 const ROLE_COLOR = {
   foreman: 'amber',
   carpenter: 'blue',
@@ -43,111 +37,47 @@ const ROLE_COLOR = {
 
 // ─── Form ──────────────────────────────────────────────────
 function WorkerForm({ initial, onSubmit, loading }) {
-  const empty = {
-    full_name: '', phone: '', role: 'carpenter',
-    rate_type: 'daily', rate_amount: '', is_active: true, notes: '',
-  }
-  const [form, setForm] = useState(initial ? {
-    ...initial,
-    rate_amount: initial.rate_amount ? String(Math.round(initial.rate_amount)) : '',
-  } : empty)
-
-  const set = (field, val) => setForm(f => ({ ...f, [field]: val }))
-
-  const handleSubmit = (e) => {
-    e.preventDefault()
-    onSubmit({
-      ...form,
-      rate_amount: parseFloat(String(form.rate_amount).replace(/\D/g, '')) || 0,
-      is_active: form.is_active === true || form.is_active === 'true',
-    })
-  }
-
-  // hint tipe upah berdasarkan role
-  const rateHint = {
-    daily: 'Dibayar per hari kerja',
-    per_unit: 'Dibayar per unit yang dikerjakan (cocok untuk tukang meubel)',
-    fixed: 'Dibayar borongan untuk seluruh pekerjaan',
-  }
+  const [form, setForm] = useState(initial || {
+    full_name: '', phone: '', role: 'carpenter', is_active: true, notes: ''
+  })
+  const set = (f, v) => setForm(p => ({ ...p, [f]: v }))
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
-      {/* Info Tukang */}
-      <div>
-        <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">
-          Info Tukang
-        </h4>
-        <div className="grid grid-cols-2 gap-3">
-          <Input
-            label="Full Name *"
-            value={form.full_name}
-            onChange={e => set('full_name', e.target.value)}
-            placeholder="contoh: Pak Budi"
-            required
-          />
-          <Input
-            label="Phone Number"
-            value={form.phone}
-            onChange={e => set('phone', e.target.value)}
-            placeholder="contoh: 08123456789"
-          />
-          <Select
-            label="Role *"
-            value={form.role}
-            onChange={e => set('role', e.target.value)}
-          >
-            {ROLE_OPTIONS.map(o => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </Select>
-          <Select
-            label="Status"
-            value={form.is_active}
-            onChange={e => set('is_active', e.target.value === 'true')}
-          >
-            <option value="true">Active</option>
-            <option value="false">Inactive</option>
-          </Select>
-        </div>
-      </div>
-
-      {/* Rate */}
-      <div>
-        <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">
-          Rate
-        </h4>
-        <div className="grid grid-cols-2 gap-3">
-          <Select
-            label="Rate Type *"
-            value={form.rate_type}
-            onChange={e => set('rate_type', e.target.value)}
-          >
-            {RATE_OPTIONS.map(o => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </Select>
-          <CurrencyInput
-            label={`Rate Amount (${RATE_TYPE[form.rate_type]})`}
-            value={form.rate_amount}
-            onChange={val => set('rate_amount', val)}
-            placeholder="0"
-          />
-        </div>
-        <p className="text-xs text-gray-400 mt-2 ml-1">
-          {rateHint[form.rate_type]}
-        </p>
-      </div>
-
-      {/* Catatan */}
-      <div>
-        <Input
-          label="Notes"
-          value={form.notes}
+    <form onSubmit={e => { e.preventDefault(); onSubmit(form) }} className="space-y-4">
+      <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-widest">
+        Info Tukang
+      </h4>
+      <div className="grid grid-cols-2 gap-3">
+        <Input label="Full Name *" value={form.full_name}
+          onChange={e => set('full_name', e.target.value)}
+          placeholder="contoh: Pak Budi" required />
+        <Input label="Phone Number" value={form.phone}
+          onChange={e => set('phone', e.target.value)}
+          placeholder="contoh: 08123456789" />
+        <Select label="Role *" value={form.role}
+          onChange={e => set('role', e.target.value)}>
+          <option value="foreman">Mandor</option>
+          <option value="carpenter">Tukang Kayu</option>
+          <option value="helper">Kenek</option>
+          <option value="furniture_maker">Tukang Meubel</option>
+          <option value="bricklayer">Tukang Batu</option>
+          <option value="painter">Tukang Cat</option>
+          <option value="electrician">Elektrisi</option>
+          <option value="plumber">Tukang Ledeng</option>
+          <option value="other">Lainnya</option>
+        </Select>
+        <Select label="Status" value={form.is_active}
+          onChange={e => set('is_active', e.target.value === 'true')}>
+          <option value="true">Active</option>
+          <option value="false">Inactive</option>
+        </Select>
+        <Input label="Notes" value={form.notes}
           onChange={e => set('notes', e.target.value)}
-          placeholder="additional notes (optional)"
-        />
+          placeholder="optional" className="col-span-2" />
       </div>
-
+      <p className="text-xs text-blue-600 bg-blue-50 border border-blue-100 rounded-lg p-3">
+        Rate upah ditentukan per proyek saat assign tukang ke proyek.
+      </p>
       <div className="flex justify-end pt-2 border-t border-gray-100">
         <Button type="submit" variant="primary" loading={loading}>
           {initial ? 'Save Changes' : 'Save Worker'}

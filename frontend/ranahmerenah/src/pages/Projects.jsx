@@ -764,10 +764,579 @@ function TabPayments({
   );
 }
 
+function PaymentModal({ payModal, onClose, project, onSuccess }) {
+  const { type, assignment } = payModal;
+  const qc = useQueryClient();
+  const worker = assignment.worker;
+
+  // ── Lump Sum ──────────────────────────────────────────
+  const [lumpForm, setLumpForm] = useState({
+    payment_date: "",
+    amount: String(Math.round(parseFloat(assignment.rate_amount))),
+    notes: "",
+  });
+
+  // ── Timesheet — pilih hari kerja ──────────────────────
+  const [selectedDates, setSelectedDates] = useState([]);
+  const [tsPayDate, setTsPayDate] = useState("");
+  const [tsNotes, setTsNotes] = useState("");
+
+  // ── Weekly — generate jadwal ──────────────────────────
+  const [weeklyDates, setWeeklyDates] = useState([]);
+  const [weeklyAttendance, setWeeklyAttendance] = useState({});
+  // weeklyAttendance = { 'YYYY-MM-DD': { present: true, days: 5 } }
+
+  const rate = parseFloat(assignment.rate_amount) || 0;
+
+  // Generate weekly payment dates dari start-end project
+  const generateWeeklyDates = () => {
+    if (!project?.start_date || !project?.end_date) return;
+    const dates = [];
+    let current = new Date(project.start_date);
+    const end = new Date(project.end_date);
+    // Maju ke Sabtu pertama
+    while (current.getDay() !== 6) current.setDate(current.getDate() + 1);
+    while (current <= end) {
+      dates.push(current.toISOString().split("T")[0]);
+      current.setDate(current.getDate() + 7);
+    }
+    setWeeklyDates(dates);
+    // Init attendance
+    const att = {};
+    dates.forEach((d) => {
+      att[d] = { days: 5, pay: true };
+    });
+    setWeeklyAttendance(att);
+  };
+
+  const wageMutation = useMutation({
+    mutationFn: async (payload) => {
+      const wage = await workersApi.createWage(payload);
+      // Catat ke ledger
+      await ledgerApi.createExpense({
+        entry_date: payload.payment_date,
+        entry_type: "expense",
+        description: `Upah ${worker?.full_name} — ${project?.project_name}`,
+        paid_to: worker?.full_name || "",
+        gross_expense: payload.gross_amount,
+        discount_received: 0,
+        payment_method: "cash",
+        project_id: project?.id || null,
+        notes: payload.notes || "",
+      });
+      return wage;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["wages"] });
+      qc.invalidateQueries({ queryKey: ["ledger"] });
+      onSuccess();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const handleLumpSum = () => {
+    if (!lumpForm.payment_date) return toast.error("Payment date required");
+    const amt = parseFloat(parseCurrency(lumpForm.amount)) || 0;
+    if (!amt) return toast.error("Amount required");
+    wageMutation.mutate({
+      assignment_id: assignment.id,
+      worker_id: assignment.worker_id,
+      project_id: project?.id,
+      payment_date: lumpForm.payment_date,
+      rate_snapshot: rate,
+      gross_amount: amt,
+      deduction: 0,
+      net_amount: amt,
+      notes: lumpForm.notes || null,
+    });
+  };
+
+  const handleTimesheet = () => {
+    if (!selectedDates.length) return toast.error("Pilih minimal 1 hari kerja");
+    if (!tsPayDate) return toast.error("Tanggal bayar required");
+    const days = selectedDates.length;
+    const gross = days * rate;
+    wageMutation.mutate({
+      assignment_id: assignment.id,
+      worker_id: assignment.worker_id,
+      project_id: project?.id,
+      payment_date: tsPayDate,
+      period_start: selectedDates[0],
+      period_end: selectedDates[selectedDates.length - 1],
+      days_worked: days,
+      rate_snapshot: rate,
+      gross_amount: gross,
+      deduction: 0,
+      net_amount: gross,
+      notes: tsNotes || `${days} hari kerja: ${selectedDates.join(", ")}`,
+    });
+  };
+
+  const handleWeekly = (payDate) => {
+    const att = weeklyAttendance[payDate];
+    if (!att?.pay) return;
+    // Hitung hari kerja aktual minggu ini (bisa kurang dari 5)
+    const daysWorked = parseInt(att.days) || 0;
+    if (!daysWorked) return toast.error("Hari kerja = 0, tidak perlu dibayar");
+    const gross = daysWorked * rate;
+    wageMutation.mutate({
+      assignment_id: assignment.id,
+      worker_id: assignment.worker_id,
+      project_id: project?.id,
+      payment_date: payDate,
+      days_worked: daysWorked,
+      rate_snapshot: rate,
+      gross_amount: gross,
+      deduction: 0,
+      net_amount: gross,
+      notes: `Weekly payment — ${daysWorked} hari`,
+    });
+  };
+
+  const toggleDate = (dateStr) => {
+    setSelectedDates((prev) =>
+      prev.includes(dateStr)
+        ? prev.filter((d) => d !== dateStr)
+        : [...prev, dateStr].sort(),
+    );
+  };
+
+  // Generate calendar untuk timesheet (bulan ini dan bulan depan)
+  const generateCalendar = () => {
+    const start = project?.start_date
+      ? new Date(project.start_date)
+      : new Date();
+    const end = project?.end_date ? new Date(project.end_date) : new Date();
+    const dates = [];
+    let cur = new Date(start);
+    while (cur <= end) {
+      dates.push(cur.toISOString().split("T")[0]);
+      cur.setDate(cur.getDate() + 1);
+    }
+    return dates;
+  };
+
+  const calendarDates = generateCalendar();
+  const totalTimesheet = selectedDates.length * rate;
+
+  return (
+    <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
+      <div
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[85vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900">
+              {type === "lump_sum"
+                ? "💰 Bayar Lunas"
+                : type === "timesheet"
+                  ? "📅 Timesheet Harian"
+                  : type === "per_unit"
+                    ? "📦 Bayar Per Unit"
+                    : "📆 Weekly Payroll"}
+            </h3>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {worker?.full_name} ·{" "}
+              {ROLE_OPTIONS.find((r) => r.value === worker?.role)?.label} ·{" "}
+              {formatRupiah(rate)}/
+              {assignment.rate_type === "daily" ? "hari" : "unit"}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 p-5 space-y-4">
+          {/* ── LUMP SUM ── */}
+          {type === "lump_sum" && (
+            <div className="space-y-3">
+              <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 text-xs space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Rate borongan</span>
+                  <span className="font-medium">{formatRupiah(rate)}</span>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  label="Tanggal Bayar *"
+                  type="date"
+                  value={lumpForm.payment_date}
+                  onChange={(e) =>
+                    setLumpForm((p) => ({ ...p, payment_date: e.target.value }))
+                  }
+                />
+                <CurrencyInput
+                  label="Jumlah Dibayar *"
+                  value={lumpForm.amount}
+                  onChange={(v) => setLumpForm((p) => ({ ...p, amount: v }))}
+                />
+              </div>
+              <Input
+                label="Catatan"
+                value={lumpForm.notes}
+                onChange={(e) =>
+                  setLumpForm((p) => ({ ...p, notes: e.target.value }))
+                }
+                placeholder="optional"
+              />
+              <Button
+                type="button"
+                variant="primary"
+                className="w-full"
+                loading={wageMutation.isPending}
+                onClick={handleLumpSum}
+              >
+                Simpan Pembayaran
+              </Button>
+            </div>
+          )}
+
+          {/* ── TIMESHEET (pilih hari kerja) ── */}
+          {type === "timesheet" && (
+            <div className="space-y-3">
+              <p className="text-xs text-gray-500">
+                Pilih hari-hari yang dia masuk kerja, lalu klik "Proses
+                Pembayaran".
+              </p>
+
+              {/* Calendar grid */}
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <div className="grid grid-cols-7 bg-gray-50 border-b border-gray-200">
+                  {["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"].map(
+                    (d) => (
+                      <div
+                        key={d}
+                        className="text-center text-xs font-medium text-gray-500 py-1.5"
+                      >
+                        {d}
+                      </div>
+                    ),
+                  )}
+                </div>
+                <div className="p-2">
+                  {/* Group by week */}
+                  {(() => {
+                    if (!calendarDates.length)
+                      return (
+                        <p className="text-center text-xs text-gray-400 py-4">
+                          Set project start/end date dulu
+                        </p>
+                      );
+                    const firstDate = new Date(calendarDates[0]);
+                    const startDay = firstDate.getDay();
+                    const cells = [];
+                    // Empty cells before first date
+                    for (let i = 0; i < startDay; i++) cells.push(null);
+                    calendarDates.forEach((d) => cells.push(d));
+                    // Pad to full week
+                    while (cells.length % 7 !== 0) cells.push(null);
+                    const weeks = [];
+                    for (let i = 0; i < cells.length; i += 7)
+                      weeks.push(cells.slice(i, i + 7));
+                    return weeks.map((week, wi) => (
+                      <div key={wi} className="grid grid-cols-7 gap-0.5 mb-0.5">
+                        {week.map((d, di) => {
+                          if (!d) return <div key={di} />;
+                          const selected = selectedDates.includes(d);
+                          const dayNum = new Date(d).getDate();
+                          return (
+                            <button
+                              key={d}
+                              type="button"
+                              onClick={() => toggleDate(d)}
+                              className={`aspect-square rounded text-xs font-medium transition-all ${
+                                selected
+                                  ? "bg-emerald-600 text-white"
+                                  : "hover:bg-emerald-50 text-gray-700"
+                              }`}
+                            >
+                              {dayNum}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ));
+                  })()}
+                </div>
+              </div>
+
+              {selectedDates.length > 0 && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">
+                      {selectedDates.length} hari × {formatRupiah(rate)}
+                    </span>
+                    <span className="font-bold text-emerald-700">
+                      {formatRupiah(totalTimesheet)}
+                    </span>
+                  </div>
+                  <div className="text-gray-400 text-xs">
+                    {selectedDates.join(", ")}
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  label="Tanggal Bayar *"
+                  type="date"
+                  value={tsPayDate}
+                  onChange={(e) => setTsPayDate(e.target.value)}
+                />
+                <Input
+                  label="Catatan"
+                  value={tsNotes}
+                  onChange={(e) => setTsNotes(e.target.value)}
+                  placeholder="optional"
+                />
+              </div>
+
+              <Button
+                type="button"
+                variant="primary"
+                className="w-full"
+                loading={wageMutation.isPending}
+                disabled={!selectedDates.length || !tsPayDate}
+                onClick={handleTimesheet}
+              >
+                Proses Pembayaran ({selectedDates.length} hari ={" "}
+                {formatRupiah(totalTimesheet)})
+              </Button>
+            </div>
+          )}
+
+          {/* ── PER UNIT ── */}
+          {type === "per_unit" && (
+            <div className="space-y-3">
+              <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Rate per unit</span>
+                  <span className="font-medium">{formatRupiah(rate)}</span>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  label="Tanggal Bayar *"
+                  type="date"
+                  value={lumpForm.payment_date}
+                  onChange={(e) =>
+                    setLumpForm((p) => ({ ...p, payment_date: e.target.value }))
+                  }
+                />
+                <Input
+                  label="Jumlah Unit *"
+                  type="number"
+                  min="0"
+                  value={lumpForm.units || ""}
+                  onChange={(e) =>
+                    setLumpForm((p) => ({ ...p, units: e.target.value }))
+                  }
+                  placeholder="0"
+                />
+              </div>
+              {lumpForm.units > 0 && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs flex justify-between">
+                  <span>
+                    {lumpForm.units} unit × {formatRupiah(rate)}
+                  </span>
+                  <span className="font-bold text-emerald-700">
+                    {formatRupiah(lumpForm.units * rate)}
+                  </span>
+                </div>
+              )}
+              <Input
+                label="Catatan"
+                value={lumpForm.notes}
+                onChange={(e) =>
+                  setLumpForm((p) => ({ ...p, notes: e.target.value }))
+                }
+                placeholder="optional"
+              />
+              <Button
+                type="button"
+                variant="primary"
+                className="w-full"
+                loading={wageMutation.isPending}
+                onClick={() => {
+                  const units = parseFloat(lumpForm.units) || 0;
+                  if (!lumpForm.payment_date)
+                    return toast.error("Tanggal bayar required");
+                  if (!units) return toast.error("Jumlah unit required");
+                  const gross = units * rate;
+                  wageMutation.mutate({
+                    assignment_id: assignment.id,
+                    worker_id: assignment.worker_id,
+                    project_id: project?.id,
+                    payment_date: lumpForm.payment_date,
+                    unit_count: units,
+                    rate_snapshot: rate,
+                    gross_amount: gross,
+                    deduction: 0,
+                    net_amount: gross,
+                    notes: lumpForm.notes || `${units} unit`,
+                  });
+                }}
+              >
+                Simpan Pembayaran
+              </Button>
+            </div>
+          )}
+
+          {/* ── WEEKLY PAYROLL ── */}
+          {type === "weekly" && (
+            <div className="space-y-3">
+              <p className="text-xs text-gray-500">
+                Jadwal bayar mingguan berdasarkan durasi proyek. Edit jumlah
+                hari kerja tiap minggu (kalau ada yang tidak masuk).
+              </p>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={generateWeeklyDates}
+              >
+                Generate Jadwal dari Tanggal Proyek
+              </Button>
+
+              {weeklyDates.length > 0 && (
+                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                  <table className="w-full text-xs">
+                    <thead className="bg-gray-50 border-b border-gray-200">
+                      <tr>
+                        <th className="text-left px-3 py-2 font-medium text-gray-500">
+                          Tanggal Bayar
+                        </th>
+                        <th className="text-right px-3 py-2 font-medium text-gray-500">
+                          Hari Kerja
+                        </th>
+                        <th className="text-right px-3 py-2 font-medium text-gray-500">
+                          Total
+                        </th>
+                        <th className="px-3 py-2 w-20 text-center font-medium text-gray-500">
+                          Bayar?
+                        </th>
+                        <th className="px-3 py-2 w-16"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {weeklyDates.map((d) => {
+                        const att = weeklyAttendance[d] || {
+                          days: 5,
+                          pay: true,
+                        };
+                        const days = parseInt(att.days) || 0;
+                        const amt = days * rate;
+                        return (
+                          <tr key={d} className={!att.pay ? "opacity-40" : ""}>
+                            <td className="px-3 py-2 font-medium text-gray-800">
+                              {formatDate(d)}
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              <input
+                                type="number"
+                                min="0"
+                                max="7"
+                                value={att.days}
+                                onChange={(e) =>
+                                  setWeeklyAttendance((prev) => ({
+                                    ...prev,
+                                    [d]: { ...att, days: e.target.value },
+                                  }))
+                                }
+                                className="w-12 text-right border border-gray-200 rounded px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                              />
+                              <span className="text-gray-400 ml-1">hari</span>
+                            </td>
+                            <td className="px-3 py-2 text-right font-semibold text-gray-900">
+                              {formatRupiah(amt)}
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              <input
+                                type="checkbox"
+                                checked={att.pay}
+                                onChange={(e) =>
+                                  setWeeklyAttendance((prev) => ({
+                                    ...prev,
+                                    [d]: { ...att, pay: e.target.checked },
+                                  }))
+                                }
+                                className="rounded border-gray-300 text-emerald-600"
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                loading={wageMutation.isPending}
+                                onClick={() => handleWeekly(d)}
+                                disabled={!att.pay || !days}
+                              >
+                                Bayar
+                              </Button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot className="bg-gray-50 border-t border-gray-200">
+                      <tr>
+                        <td className="px-3 py-2 text-xs font-semibold text-gray-500">
+                          Total (
+                          {
+                            weeklyDates.filter((d) => weeklyAttendance[d]?.pay)
+                              .length
+                          }{" "}
+                          minggu)
+                        </td>
+                        <td className="px-3 py-2 text-right text-xs font-semibold text-gray-700">
+                          {weeklyDates.reduce(
+                            (s, d) =>
+                              s + (parseInt(weeklyAttendance[d]?.days) || 0),
+                            0,
+                          )}{" "}
+                          hari
+                        </td>
+                        <td className="px-3 py-2 text-right text-xs font-semibold text-emerald-700">
+                          {formatRupiah(
+                            weeklyDates.reduce((s, d) => {
+                              const att = weeklyAttendance[d];
+                              return (
+                                s +
+                                (att?.pay
+                                  ? (parseInt(att.days) || 0) * rate
+                                  : 0)
+                              );
+                            }, 0),
+                          )}
+                        </td>
+                        <td colSpan={2} />
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Tab: Workers — Table Style ────────────────────────────
 function TabWorkers({ project }) {
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
+  const [payModal, setPayModal] = useState(null);
+  // payModal = { type: 'lump_sum'|'timesheet'|'weekly', assignment: {...} }
   const [form, setForm] = useState({
     worker_id: "",
     rate_type: "daily",
@@ -910,6 +1479,9 @@ function TabWorkers({ project }) {
                 </th>
                 <th className="text-left px-2 py-2.5 text-xs font-medium text-gray-500">
                   Notes
+                </th>
+                <th className="text-left px-2 py-2.5 text-xs font-medium text-gray-500 w-28">
+                  Payment
                 </th>
                 <th className="w-10 px-2 py-2.5"></th>
               </tr>
@@ -1106,6 +1678,53 @@ function TabWorkers({ project }) {
                     <td className="px-2 py-2.5 text-xs text-gray-400 italic">
                       {a.notes || "-"}
                     </td>
+                    {/* Payment action berdasarkan rate_type */}
+                    <td className="px-2 py-2.5">
+                      {a.rate_type === "fixed" && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setPayModal({ type: "lump_sum", assignment: a })
+                          }
+                          className="text-xs px-2 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded hover:bg-emerald-100 transition-all whitespace-nowrap"
+                        >
+                          💰 Pay
+                        </button>
+                      )}
+                      {a.rate_type === "daily" && (
+                        <div className="flex gap-1">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setPayModal({ type: "timesheet", assignment: a })
+                            }
+                            className="text-xs px-2 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded hover:bg-blue-100 transition-all"
+                          >
+                            📅 Timesheet
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setPayModal({ type: "weekly", assignment: a })
+                            }
+                            className="text-xs px-2 py-1 bg-orange-50 text-orange-700 border border-orange-200 rounded hover:bg-orange-100 transition-all"
+                          >
+                            📆 Weekly
+                          </button>
+                        </div>
+                      )}
+                      {a.rate_type === "per_unit" && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setPayModal({ type: "per_unit", assignment: a })
+                          }
+                          className="text-xs px-2 py-1 bg-purple-50 text-purple-700 border border-purple-200 rounded hover:bg-purple-100 transition-all whitespace-nowrap"
+                        >
+                          📦 Pay Units
+                        </button>
+                      )}
+                    </td>
                     <td className="px-2 py-2.5 text-center">
                       <button
                         type="button"
@@ -1125,6 +1744,18 @@ function TabWorkers({ project }) {
           </table>
         </div>
       </div>
+      {/* Payment Modal */}
+      {payModal && (
+        <PaymentModal
+          payModal={payModal}
+          onClose={() => setPayModal(null)}
+          project={project}
+          onSuccess={() => {
+            setPayModal(null);
+            toast.success("Payment recorded!");
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -1491,7 +2122,7 @@ export default function Projects() {
 
   const createMutation = useMutation({
     mutationFn: async (data) => {
-      const { payments, deletedPaymentIds: _del, ...projectData } = data;
+      const { payments, deletedPaymentIds: _, ...projectData } = data;
       const project = await projectsApi.create({
         ...projectData,
         payments: [],

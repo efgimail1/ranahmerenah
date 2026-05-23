@@ -9,6 +9,8 @@ class WorkerBase(BaseModel):
     full_name: str = Field(..., min_length=2, max_length=150)
     phone:     Optional[str] = None
     role:      WorkerRole
+    rate_type: Optional[RateType] = RateType.daily
+    rate_amount: Optional[Decimal] = Decimal('0')
     is_active: Optional[bool] = True
     notes:     Optional[str] = None
 
@@ -19,6 +21,8 @@ class WorkerUpdate(BaseModel):
     full_name: Optional[str] = None
     phone:     Optional[str] = None
     role:      Optional[WorkerRole] = None
+    rate_type: Optional[RateType] = None
+    rate_amount: Optional[Decimal] = None
     is_active: Optional[bool] = None
     notes:     Optional[str] = None
 

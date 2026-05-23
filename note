@@ -10,3 +10,33 @@ git
 git add .
 git commit -m "keterangan"
 git push
+
+
+
+
+ini ada error.
+
+
+
+oke fungsinya sudah jalan. next stepnya saya ada bisnis proses seperti ini.
+
+Untuk workers di modul Projects.
+
+
+
+
+
+Ada tipe workers yang di bayar sekali beres.
+
+
+
+Ada tipe workers yang di bayar dalam 1 minggu bisa 2 hari atau 3 hari dan itu bisa beda beda harinya tergantung dia kerja hari apa, bisa selasa lalu kamis lalu sabtu.
+
+
+
+Ada tipe workers yang di bayarnya per minggu, misalnya kalau projectnya dari 12 April 2026 - 9 Mei 2026 pembayarannya tiap minggu, 18 april, 25 april, 2 mei, 9 mei.
+
+Best practicenya seperti apa ?
+
+Apakah link ke ledger seperti payment terms modelnya atau gimana ? menurut standard internasional.
+
