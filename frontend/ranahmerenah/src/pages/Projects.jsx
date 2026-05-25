@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { projectsApi } from "../api/projects";
 import { workersApi } from "../api/workers";
 import { ledgerApi } from "../api/ledger";
+import { timesheetsApi } from "../api/timesheets";
 import Button from "../components/ui/Button";
 import Badge from "../components/ui/Badge";
 import Card from "../components/ui/Card";
@@ -31,10 +32,11 @@ import {
   AlertCircle,
   TrendingUp,
   Save,
+  Users,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
-// ─── Constants ─────────────────────────────────────────────
+// ─── Constants ──────────────────────────────────────────────
 const ROLE_OPTIONS = [
   { value: "foreman", label: "Mandor" },
   { value: "carpenter", label: "Tukang Kayu" },
@@ -48,9 +50,9 @@ const ROLE_OPTIONS = [
 ];
 
 const RATE_OPTIONS = [
-  { value: "daily", label: "Per Day" },
+  { value: "daily", label: "Per Day (Harian)" },
   { value: "per_unit", label: "Per Unit" },
-  { value: "fixed", label: "Fixed / Lump Sum" },
+  { value: "fixed", label: "Fixed / Borongan" },
 ];
 
 const PAYMENT_METHOD_OPTIONS = [
@@ -60,9 +62,24 @@ const PAYMENT_METHOD_OPTIONS = [
   { value: "other", label: "Other" },
 ];
 
+const MONTH_NAMES = [
+  "Januari",
+  "Februari",
+  "Maret",
+  "April",
+  "Mei",
+  "Juni",
+  "Juli",
+  "Agustus",
+  "September",
+  "Oktober",
+  "November",
+  "Desember",
+];
+const DAY_LABELS = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
 const QRIS_FEE = 0.003;
 
-// ─── Parse helpers ─────────────────────────────────────────
+// ─── Parse helpers ───────────────────────────────────────────
 function parseHeader(p) {
   if (!p)
     return {
@@ -113,7 +130,1301 @@ function parsePayments(p) {
   }));
 }
 
-// ─── Tab: Payment Terms — Table Style ─────────────────────
+// ─── OvertimeEditor ─────────────────────────────────────────
+function OvertimeEditor({ ts, onUpdate }) {
+  const [otHours, setOtHours] = useState(
+    String(parseFloat(ts.overtime_hours || 0)),
+  );
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async (e) => {
+    e.stopPropagation();
+    setSaving(true);
+    try {
+      await timesheetsApi.update(ts.id, {
+        overtime_hours: parseFloat(otHours) || 0,
+      });
+      onUpdate();
+      toast.success("Lembur diupdate!");
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div
+      className="flex flex-col items-center gap-1 w-full px-1"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <span className="text-xs text-gray-500">OT (jam):</span>
+      <div className="flex items-center gap-1">
+        <input
+          type="number"
+          min="0"
+          max="8"
+          step="0.5"
+          value={otHours}
+          onChange={(e) => setOtHours(e.target.value)}
+          className="w-12 text-center text-xs border border-gray-300 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+        />
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving}
+          className="text-xs bg-emerald-600 text-white px-1.5 py-0.5 rounded hover:bg-emerald-700"
+        >
+          {saving ? "..." : "✓"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── TimesheetModal ──────────────────────────────────────────
+function TimesheetModal({ assignment, project, onClose }) {
+  const qc = useQueryClient();
+  const worker = assignment.worker;
+  const rate = parseFloat(assignment.rate_amount) || 0;
+
+  const [activeView, setActiveView] = useState("calendar");
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [payDate, setPayDate] = useState("");
+  const [payNotes, setPayNotes] = useState("");
+
+  // Month navigation — start from project start month or today
+  const initMonth = () => {
+    const d = new Date();
+    return { year: d.getFullYear(), month: d.getMonth() };
+  };
+  const [currentMonth, setCurrentMonth] = useState(initMonth);
+
+  const prevMonth = () =>
+    setCurrentMonth((p) =>
+      p.month === 0
+        ? { year: p.year - 1, month: 11 }
+        : { ...p, month: p.month - 1 },
+    );
+  const nextMonth = () =>
+    setCurrentMonth((p) =>
+      p.month === 11
+        ? { year: p.year + 1, month: 0 }
+        : { ...p, month: p.month + 1 },
+    );
+
+  const { data: timesheets = [], refetch } = useQuery({
+    queryKey: ["timesheets", assignment.id],
+    queryFn: () => timesheetsApi.getAll({ assignment_id: assignment.id }),
+  });
+
+  const calcPay = (ts) => {
+    const regPay = (parseFloat(ts.regular_hours || 8) / 8) * rate;
+    const otRate = (rate / 8) * parseFloat(ts.overtime_rate || 1.5);
+    const otPay = parseFloat(ts.overtime_hours || 0) * otRate;
+    return { regPay, otPay, total: regPay + otPay };
+  };
+
+  const unpaidTs = timesheets.filter((ts) => !ts.is_paid);
+  const paidTs = timesheets.filter((ts) => ts.is_paid);
+  const tsDateMap = Object.fromEntries(
+    timesheets.map((ts) => [ts.work_date, ts]),
+  );
+
+  // BARU — awal minggu = Minggu (Sun–Sat)
+  const groupByWeek = (list) => {
+    const weeks = {};
+    list.forEach((ts) => {
+      // Parse tanggal dengan benar (hindari timezone offset)
+      const [y, m, d_] = ts.work_date.split("-").map(Number);
+      const d = new Date(y, m - 1, d_); // local time, bukan UTC
+      const sun = new Date(d);
+      sun.setDate(d.getDate() - d.getDay()); // mundur ke Minggu (day=0)
+      // Format manual supaya tidak kena timezone
+      const yy = sun.getFullYear();
+      const mm = String(sun.getMonth() + 1).padStart(2, "0");
+      const dd = String(sun.getDate()).padStart(2, "0");
+      const key = `${yy}-${mm}-${dd}`;
+      if (!weeks[key]) weeks[key] = [];
+      weeks[key].push(ts);
+    });
+    Object.values(weeks).forEach((arr) =>
+      arr.sort((a, b) => a.work_date.localeCompare(b.work_date)),
+    );
+    return weeks;
+  };
+
+  const unpaidWeeks = groupByWeek(unpaidTs);
+  const paidWeeks = groupByWeek(paidTs);
+
+  const selectedTs = timesheets.filter((ts) => selectedIds.includes(ts.id));
+  const selectedTotal = selectedTs.reduce((s, ts) => s + calcPay(ts).total, 0);
+  const selectedDays = selectedTs.length;
+  const selectedOT = selectedTs.reduce(
+    (s, ts) => s + parseFloat(ts.overtime_hours || 0),
+    0,
+  );
+
+  // Build calendar for current month
+  const buildMonthCalendar = () => {
+    const { year, month } = currentMonth;
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const startDay = firstDay.getDay();
+    const cells = [];
+    for (let i = 0; i < startDay; i++) cells.push(null);
+    for (let d = 1; d <= lastDay.getDate(); d++)
+      cells.push(new Date(year, month, d));
+    while (cells.length % 7 !== 0) cells.push(null);
+    const weeks = [];
+    for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+    return weeks;
+  };
+
+  const addMutation = useMutation({
+    mutationFn: (data) => timesheetsApi.create(data),
+    onSuccess: () => {
+      refetch();
+      toast.success("Hari kerja ditambahkan!");
+    },
+    onError: (e) => toast.error(e.message || "Tanggal sudah ada"),
+  });
+
+  const delMutation = useMutation({
+    mutationFn: (id) => timesheetsApi.delete(id),
+    onSuccess: () => {
+      refetch();
+      toast.success("Dihapus.");
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const payMutation = useMutation({
+    mutationFn: async () => {
+      if (!payDate) throw new Error("Tanggal bayar required");
+      if (!selectedIds.length)
+        throw new Error("Pilih timesheet yang mau dibayar");
+
+      const wage = await workersApi.createWage({
+        assignment_id: assignment.id,
+        worker_id: assignment.worker_id,
+        project_id: project?.id,
+        payment_date: payDate,
+        period_start: selectedTs[0]?.work_date,
+        period_end: selectedTs[selectedTs.length - 1]?.work_date,
+        days_worked: selectedDays,
+        rate_snapshot: rate,
+        gross_amount: selectedTotal,
+        deduction: 0,
+        net_amount: selectedTotal,
+        notes: payNotes || `${selectedDays} hari kerja`,
+      });
+
+      await timesheetsApi.markPaid(selectedIds, Number(wage.id));
+
+      await ledgerApi.createExpense({
+        entry_date: payDate,
+        entry_type: "expense",
+        description: `Upah ${worker?.full_name} — ${selectedDays} hari`,
+        paid_to: worker?.full_name || "",
+        gross_expense: selectedTotal,
+        discount_received: 0,
+        payment_method: "cash",
+        project_id: project?.id || null,
+        notes: payNotes || null,
+      });
+      return wage;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["timesheets", assignment.id] });
+      qc.invalidateQueries({ queryKey: ["wages"] });
+      qc.invalidateQueries({ queryKey: ["ledger"] });
+      setSelectedIds([]);
+      setPayDate("");
+      setPayNotes("");
+      setActiveView("calendar");
+      toast.success("Pembayaran berhasil dicatat!");
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const weeks = buildMonthCalendar();
+
+  return (
+    <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
+      <div
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 shrink-0">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900">
+              Timesheet — {worker?.full_name}
+            </h3>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {ROLE_OPTIONS.find((r) => r.value === worker?.role)?.label} ·
+              Rate: {formatRupiah(rate)}/hari · Project: {project?.project_name}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex bg-gray-100 rounded-lg p-0.5">
+              <button
+                type="button"
+                onClick={() => setActiveView("calendar")}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                  activeView === "calendar"
+                    ? "bg-white text-gray-900 shadow-sm"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                📅 Timesheet
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveView("payment")}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                  activeView === "payment"
+                    ? "bg-white text-gray-900 shadow-sm"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                💰 Pembayaran
+                {unpaidTs.length > 0 && (
+                  <span className="ml-1 bg-amber-100 text-amber-700 rounded-full px-1.5 py-0.5">
+                    {unpaidTs.length}
+                  </span>
+                )}
+              </button>
+            </div>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+
+        <div className="overflow-y-auto flex-1">
+          {/* ── TIMESHEET CALENDAR ── */}
+          {activeView === "calendar" && (
+            <div className="p-5 space-y-4">
+              {/* Summary cards */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
+                  <div className="text-lg font-bold text-blue-700">
+                    {timesheets.length}
+                  </div>
+                  <div className="text-xs text-blue-600">Total Hari Kerja</div>
+                </div>
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-center">
+                  <div className="text-lg font-bold text-amber-700">
+                    {unpaidTs.length}
+                  </div>
+                  <div className="text-xs text-amber-600">Belum Dibayar</div>
+                </div>
+                <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-center">
+                  <div className="text-lg font-bold text-emerald-700">
+                    {paidTs.length}
+                  </div>
+                  <div className="text-xs text-emerald-600">Sudah Dibayar</div>
+                </div>
+              </div>
+
+              {/* Month navigator */}
+              <div className="flex items-center justify-between bg-gray-50 rounded-xl px-4 py-2.5">
+                <button
+                  type="button"
+                  onClick={prevMonth}
+                  className="w-8 h-8 flex items-center justify-center hover:bg-white rounded-lg transition-all text-gray-600 hover:text-gray-900 text-lg font-bold"
+                >
+                  ‹
+                </button>
+                <div className="text-center">
+                  <div className="text-sm font-semibold text-gray-900">
+                    {MONTH_NAMES[currentMonth.month]} {currentMonth.year}
+                  </div>
+                  <div className="text-xs text-gray-400">
+                    Klik tanggal untuk tambah · Hover untuk edit lembur / hapus
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={nextMonth}
+                  className="w-8 h-8 flex items-center justify-center hover:bg-white rounded-lg transition-all text-gray-600 hover:text-gray-900 text-lg font-bold"
+                >
+                  ›
+                </button>
+              </div>
+
+              {/* Calendar grid */}
+              <div className="border border-gray-200 rounded-xl overflow-hidden">
+                <div className="grid grid-cols-7 bg-gray-50 border-b border-gray-200">
+                  {DAY_LABELS.map((d) => (
+                    <div
+                      key={d}
+                      className="text-center text-xs font-medium text-gray-500 py-2"
+                    >
+                      {d}
+                    </div>
+                  ))}
+                </div>
+                <div className="p-2 space-y-1">
+                  {weeks.map((week, wi) => (
+                    <div key={wi} className="grid grid-cols-7 gap-1">
+                      {week.map((d, di) => {
+                        if (!d) return <div key={di} className="min-h-14" />;
+
+                        // ── Hitung dateStr tanpa timezone ──────────────
+                        const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+                        // ── Hitung today tanpa timezone ────────────────
+                        const now = new Date();
+                        const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+                        const isToday = dateStr === todayStr;
+
+                        const ts = tsDateMap[dateStr];
+                        const hasOT =
+                          ts && parseFloat(ts.overtime_hours || 0) > 0;
+                        const pay = ts ? calcPay(ts) : null;
+
+                        return (
+                          <div
+                            key={dateStr}
+                            onClick={() => {
+                              if (!ts) {
+                                addMutation.mutate({
+                                  assignment_id: assignment.id,
+                                  worker_id: assignment.worker_id,
+                                  project_id: project?.id,
+                                  work_date: dateStr,
+                                  regular_hours: 8,
+                                  overtime_hours: 0,
+                                  overtime_rate: 1.5,
+                                });
+                              }
+                            }}
+                            className={`relative group/cell rounded-lg text-xs flex flex-col items-center justify-center transition-all cursor-pointer min-h-14 ${
+                              ts
+                                ? ts.is_paid
+                                  ? "bg-emerald-100 border-2 border-emerald-300"
+                                  : "bg-blue-100 border-2 border-blue-300"
+                                : "hover:bg-gray-100 border border-transparent hover:border-gray-200"
+                            }`}
+                          >
+                            {/* Angka tanggal */}
+                            <span
+                              className={`font-semibold text-sm leading-none ${
+                                ts
+                                  ? ts.is_paid
+                                    ? "text-emerald-700"
+                                    : "text-blue-700"
+                                  : isToday
+                                    ? "text-emerald-600"
+                                    : "text-gray-600"
+                              }`}
+                            >
+                              {d.getDate()}
+                            </span>
+
+                            {/* Dot kecil hanya untuk sysdate yang kosong */}
+                            {isToday && !ts && (
+                              <span className="block w-1.5 h-1.5 bg-emerald-500 rounded-full mt-0.5" />
+                            )}
+
+                            {/* Info jam & upah untuk hari kerja */}
+                            {ts && (
+                              <>
+                                <span className="text-xs text-gray-500 leading-none mt-0.5">
+                                  {parseFloat(ts.regular_hours || 8)}j
+                                </span>
+                                {hasOT && (
+                                  <span className="text-xs text-orange-500 font-medium leading-none">
+                                    +{parseFloat(ts.overtime_hours)}OT
+                                  </span>
+                                )}
+                                {!ts.is_paid && pay && (
+                                  <span className="text-xs font-medium text-blue-600 leading-none">
+                                    {formatRupiah(pay.total).replace(
+                                      "Rp\u00a0",
+                                      "",
+                                    )}
+                                  </span>
+                                )}
+                              </>
+                            )}
+
+                            {/* Hover: edit OT or delete */}
+                            {ts && !ts.is_paid && (
+                              <div className="absolute inset-0 bg-white/95 rounded-lg opacity-0 group-hover/cell:opacity-100 flex flex-col items-center justify-center gap-1 transition-all p-1">
+                                <OvertimeEditor ts={ts} onUpdate={refetch} />
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    delMutation.mutate(ts.id);
+                                  }}
+                                  className="text-xs text-red-500 hover:text-red-700 font-medium"
+                                >
+                                  Hapus
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Legend */}
+              <div className="flex gap-4 text-xs text-gray-500">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 bg-blue-100 border-2 border-blue-300 rounded inline-block" />
+                  Belum dibayar
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 bg-emerald-100 border-2 border-emerald-300 rounded inline-block" />
+                  Sudah dibayar
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="text-orange-500 font-bold">OT</span>
+                  Ada lembur
+                </span>
+              </div>
+
+              {/* Unpaid weekly table */}
+              {Object.keys(unpaidWeeks).length > 0 && (
+                <div>
+                  <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">
+                    Belum Dibayar — per Minggu
+                  </h4>
+                  <div className="border border-gray-200 rounded-xl overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead className="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                          <th className="text-left px-3 py-2 font-medium text-gray-500">
+                            Minggu
+                          </th>
+                          <th className="text-center px-3 py-2 font-medium text-gray-500">
+                            Hari
+                          </th>
+                          <th className="text-center px-3 py-2 font-medium text-gray-500">
+                            Lembur
+                          </th>
+                          <th className="text-right px-3 py-2 font-medium text-gray-500">
+                            Total
+                          </th>
+                          <th className="px-3 py-2 text-center w-24 font-medium text-gray-500">
+                            Pilih
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {Object.entries(unpaidWeeks)
+                          .sort(([a], [b]) => a.localeCompare(b))
+                          .map(([weekStart, wTs]) => {
+                            const weekTotal = wTs.reduce(
+                              (s, ts) => s + calcPay(ts).total,
+                              0,
+                            );
+                            const weekOT = wTs.reduce(
+                              (s, ts) => s + parseFloat(ts.overtime_hours || 0),
+                              0,
+                            );
+                            // Parse weekStart string manual
+                            const [wy, wm, wd] = weekStart
+                              .split("-")
+                              .map(Number);
+                            const weekEndDate = new Date(wy, wm - 1, wd + 6);
+                            const weekEndStr = `${weekEndDate.getFullYear()}-${String(weekEndDate.getMonth() + 1).padStart(2, "0")}-${String(weekEndDate.getDate()).padStart(2, "0")}`;
+                            const allSelected = wTs.every((ts) =>
+                              selectedIds.includes(ts.id),
+                            );
+                            const anySelected = wTs.some((ts) =>
+                              selectedIds.includes(ts.id),
+                            );
+
+                            return (
+                              <tr
+                                key={weekStart}
+                                className={`hover:bg-gray-50 ${anySelected ? "bg-blue-50/50" : ""}`}
+                              >
+                                <td className="px-3 py-2 text-gray-700 font-medium">
+                                  {formatDate(weekStart)} –{" "}
+                                  {formatDate(formatDate(weekEndStr))}
+                                  <div className="text-gray-400 font-normal mt-0.5">
+                                    {wTs
+                                      .map(
+                                        (ts) =>
+                                          DAY_LABELS[
+                                            new Date(ts.work_date).getDay()
+                                          ],
+                                      )
+                                      .join(", ")}
+                                  </div>
+                                </td>
+                                <td className="px-3 py-2 text-center font-medium">
+                                  {wTs.length} hari
+                                </td>
+                                <td className="px-3 py-2 text-center">
+                                  {weekOT > 0 ? (
+                                    <span className="text-orange-500 font-medium">
+                                      {weekOT}j OT
+                                    </span>
+                                  ) : (
+                                    <span className="text-gray-300">-</span>
+                                  )}
+                                </td>
+                                <td className="px-3 py-2 text-right font-semibold text-gray-900">
+                                  {formatRupiah(weekTotal)}
+                                </td>
+                                <td className="px-3 py-2 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const ids = wTs.map((ts) => ts.id);
+                                      if (allSelected) {
+                                        setSelectedIds((prev) =>
+                                          prev.filter(
+                                            (id) => !ids.includes(id),
+                                          ),
+                                        );
+                                      } else {
+                                        setSelectedIds((prev) => [
+                                          ...new Set([...prev, ...ids]),
+                                        ]);
+                                      }
+                                    }}
+                                    className={`text-xs px-2 py-1 rounded-lg transition-all font-medium ${
+                                      allSelected
+                                        ? "bg-blue-600 text-white"
+                                        : anySelected
+                                          ? "bg-blue-200 text-blue-800"
+                                          : "bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100"
+                                    }`}
+                                  >
+                                    {allSelected ? "✓ Dipilih" : "Pilih"}
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                      </tbody>
+                      {selectedIds.length > 0 && (
+                        <tfoot>
+                          <tr className="bg-blue-50 border-t-2 border-blue-200">
+                            <td
+                              colSpan={3}
+                              className="px-3 py-2 text-xs font-semibold text-blue-700"
+                            >
+                              Dipilih: {selectedDays} hari
+                              {selectedOT > 0 && ` + ${selectedOT}j OT`}
+                            </td>
+                            <td className="px-3 py-2 text-right font-bold text-blue-700">
+                              {formatRupiah(selectedTotal)}
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              <button
+                                type="button"
+                                onClick={() => setActiveView("payment")}
+                                className="text-xs px-2 py-1 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium"
+                              >
+                                Bayar →
+                              </button>
+                            </td>
+                          </tr>
+                        </tfoot>
+                      )}
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Paid history */}
+              {Object.keys(paidWeeks).length > 0 && (
+                <div>
+                  <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">
+                    Riwayat Pembayaran
+                  </h4>
+                  <div className="border border-gray-200 rounded-xl overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead className="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                          <th className="text-left px-3 py-2 font-medium text-gray-500">
+                            Minggu
+                          </th>
+                          <th className="text-center px-3 py-2 font-medium text-gray-500">
+                            Hari
+                          </th>
+                          <th className="text-center px-3 py-2 font-medium text-gray-500">
+                            Lembur
+                          </th>
+                          <th className="text-right px-3 py-2 font-medium text-gray-500">
+                            Total
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {Object.entries(paidWeeks)
+                          .sort(([a], [b]) => a.localeCompare(b))
+                          .map(([weekStart, wTs]) => {
+                            const weekTotal = wTs.reduce(
+                              (s, ts) => s + calcPay(ts).total,
+                              0,
+                            );
+                            const weekOT = wTs.reduce(
+                              (s, ts) => s + parseFloat(ts.overtime_hours || 0),
+                              0,
+                            );
+                            // Parse weekStart string manual
+                            const [wy, wm, wd] = weekStart
+                              .split("-")
+                              .map(Number);
+                            const weekEndDate = new Date(wy, wm - 1, wd + 6);
+                            const weekEndStr = `${weekEndDate.getFullYear()}-${String(weekEndDate.getMonth() + 1).padStart(2, "0")}-${String(weekEndDate.getDate()).padStart(2, "0")}`;
+                            return (
+                              <tr key={weekStart} className="opacity-60">
+                                <td className="px-3 py-2 text-gray-700">
+                                  {formatDate(weekStart)} –{" "}
+                                  {formatDate(weekEndStr)}
+                                </td>
+                                <td className="px-3 py-2 text-center">
+                                  {wTs.length} hari
+                                </td>
+                                <td className="px-3 py-2 text-center">
+                                  {weekOT > 0 ? (
+                                    <span className="text-orange-500">
+                                      {weekOT}j OT
+                                    </span>
+                                  ) : (
+                                    <span className="text-gray-300">-</span>
+                                  )}
+                                </td>
+                                <td className="px-3 py-2 text-right font-semibold text-emerald-700">
+                                  {formatRupiah(weekTotal)}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        <tr className="bg-emerald-50 border-t-2 border-emerald-200">
+                          <td
+                            colSpan={3}
+                            className="px-3 py-2 font-semibold text-emerald-700"
+                          >
+                            Total Dibayar ({paidTs.length} hari)
+                          </td>
+                          <td className="px-3 py-2 text-right font-bold text-emerald-700">
+                            {formatRupiah(
+                              paidTs.reduce(
+                                (s, ts) => s + calcPay(ts).total,
+                                0,
+                              ),
+                            )}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── PEMBAYARAN ── */}
+          {activeView === "payment" && (
+            <div className="p-5 space-y-4">
+              {selectedIds.length > 0 ? (
+                <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl space-y-3">
+                  <h4 className="text-xs font-semibold text-emerald-700 uppercase">
+                    Ringkasan Pembayaran
+                  </h4>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="text-center">
+                      <div className="text-xs text-gray-500 mb-1">
+                        Hari Kerja
+                      </div>
+                      <div className="font-bold text-gray-900 text-lg">
+                        {selectedDays}
+                      </div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xs text-gray-500 mb-1">
+                        Total Lembur
+                      </div>
+                      <div className="font-bold text-orange-600 text-lg">
+                        {selectedOT}j
+                      </div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xs text-gray-500 mb-1">
+                        Total Upah
+                      </div>
+                      <div className="font-bold text-emerald-700 text-lg">
+                        {formatRupiah(selectedTotal)}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="max-h-40 overflow-y-auto space-y-1 border-t border-emerald-200 pt-2">
+                    {selectedTs
+                      .sort((a, b) => a.work_date.localeCompare(b.work_date))
+                      .map((ts) => {
+                        const p = calcPay(ts);
+                        return (
+                          <div
+                            key={ts.id}
+                            className="flex justify-between text-xs"
+                          >
+                            <span className="text-gray-600">
+                              {formatDate(ts.work_date)}
+                              {parseFloat(ts.overtime_hours || 0) > 0 && (
+                                <span className="text-orange-500 ml-1">
+                                  +{ts.overtime_hours}j OT
+                                </span>
+                              )}
+                            </span>
+                            <span className="font-medium">
+                              {formatRupiah(p.total)}
+                            </span>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-8 border border-dashed border-gray-200 rounded-xl">
+                  <p className="text-sm text-gray-400">
+                    Belum ada hari dipilih.
+                    <br />
+                    Pilih dari tab Timesheet → klik "Pilih" di baris minggu.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setActiveView("calendar")}
+                    className="mt-3 text-xs text-emerald-600 hover:text-emerald-700 font-medium underline"
+                  >
+                    → Ke Timesheet
+                  </button>
+                </div>
+              )}
+
+              {selectedIds.length > 0 && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input
+                      label="Tanggal Bayar *"
+                      type="date"
+                      value={payDate}
+                      onChange={(e) => setPayDate(e.target.value)}
+                    />
+                    <Input
+                      label="Catatan"
+                      value={payNotes}
+                      onChange={(e) => setPayNotes(e.target.value)}
+                      placeholder="optional"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    className="w-full"
+                    loading={payMutation.isPending}
+                    disabled={!payDate}
+                    onClick={() => payMutation.mutate()}
+                  >
+                    Proses Pembayaran — {selectedDays} Hari ={" "}
+                    {formatRupiah(selectedTotal)}
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedIds([])}
+                    className="w-full text-xs text-gray-400 hover:text-gray-600 text-center"
+                  >
+                    Batal pilihan
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── PayrollRunModal — Bayar semua tukang per minggu ────────
+function PayrollRunModal({ project, assignments, onClose }) {
+  const qc = useQueryClient();
+
+  // Select week
+  const [selectedWeek, setSelectedWeek] = useState("");
+  const [payDate, setPayDate] = useState("");
+  const [payMethod, setPayMethod] = useState("cash");
+  const [notes, setNotes] = useState("");
+
+  // Load ALL timesheets for this project (unpaid only)
+  const { data: allTimesheets = [], isLoading } = useQuery({
+    queryKey: ["timesheets-project", project?.id, "unpaid"],
+    queryFn: () =>
+      timesheetsApi.getAll({ project_id: project?.id, is_paid: false }),
+    enabled: !!project?.id,
+  });
+
+  const weekOptions = (() => {
+    const weeks = {};
+    allTimesheets.forEach((ts) => {
+      const [y, m, d_] = ts.work_date.split("-").map(Number);
+      const d = new Date(y, m - 1, d_);
+      const sun = new Date(d);
+      sun.setDate(d.getDate() - d.getDay());
+      const yy = sun.getFullYear();
+      const mm = String(sun.getMonth() + 1).padStart(2, "0");
+      const dd = String(sun.getDate()).padStart(2, "0");
+      const key = `${yy}-${mm}-${dd}`;
+      if (!weeks[key]) weeks[key] = [];
+      weeks[key].push(ts);
+    });
+    return Object.entries(weeks).sort(([a], [b]) => a.localeCompare(b));
+  })();
+
+  // Timesheets for selected week
+  const weekTs = selectedWeek
+    ? allTimesheets.filter((ts) => {
+        const [y, m, d_] = ts.work_date.split("-").map(Number);
+        const d = new Date(y, m - 1, d_);
+        const sun = new Date(d);
+        sun.setDate(d.getDate() - d.getDay());
+        const key = `${sun.getFullYear()}-${String(sun.getMonth() + 1).padStart(2, "0")}-${String(sun.getDate()).padStart(2, "0")}`;
+        return key === selectedWeek;
+      })
+    : [];
+
+  // Group by worker
+  const byWorker = (() => {
+    const map = {};
+    weekTs.forEach((ts) => {
+      if (!map[ts.worker_id]) map[ts.worker_id] = [];
+      map[ts.worker_id].push(ts);
+    });
+    return map;
+  })();
+
+  // Worker attendance state: { workerId: { selected: bool, days: [...], adjustedDays: n } }
+  const [workerSel, setWorkerSel] = useState({});
+
+  // Initialize workerSel when week changes
+  const initWorkerSel = (wk) => {
+    if (!wk) return {};
+    const map = {};
+    const byW = {};
+
+    allTimesheets
+      .filter((ts) => {
+        const [y, m, d_] = ts.work_date.split("-").map(Number);
+        const d = new Date(y, m - 1, d_);
+        const sun = new Date(d);
+        sun.setDate(d.getDate() - d.getDay());
+        const key = `${sun.getFullYear()}-${String(sun.getMonth() + 1).padStart(2, "0")}-${String(sun.getDate()).padStart(2, "0")}`;
+        return key === wk;
+      })
+      .forEach((ts) => {
+        if (!byW[ts.worker_id]) byW[ts.worker_id] = [];
+        byW[ts.worker_id].push(ts);
+      });
+
+    Object.keys(byW).forEach((wid) => {
+      map[String(wid)] = {
+        selected: false, // ← selalu false saat init
+        tsIds: byW[wid].map((t) => t.id),
+      };
+    });
+    return map;
+  };
+
+  const handleWeekChange = (wk) => {
+    setSelectedWeek(wk);
+    setWorkerSel(initWorkerSel(wk)); // ← reset penuh setiap ganti minggu
+  };
+
+  const toggleWorker = (wid) => {
+  setWorkerSel(prev => ({
+    ...prev,
+    [String(wid)]: { ...prev[String(wid)], selected: !prev[String(wid)]?.selected },
+  }));
+};
+
+  // Calc pay per worker
+  const calcWorkerPay = (wid) => {
+    const wTs = byWorker[wid] || [];
+    const assignment = assignments.find((a) => a.worker_id === parseInt(wid));
+    const rate = parseFloat(assignment?.rate_amount || 0);
+    return wTs.reduce((s, ts) => {
+      const regPay = (parseFloat(ts.regular_hours || 8) / 8) * rate;
+      const otRate = (rate / 8) * parseFloat(ts.overtime_rate || 1.5);
+      const otPay = parseFloat(ts.overtime_hours || 0) * otRate;
+      return s + regPay + otPay;
+    }, 0);
+  };
+
+  const selectedWorkers = Object.entries(workerSel).filter(([, v]) => v.selected);
+  
+  const grandTotal = selectedWorkers.reduce(
+    (s, [wid]) => s + calcWorkerPay(wid),
+    0,
+  );
+
+  const weekEnd = selectedWeek
+    ? (() => {
+        const [y, m, d_] = selectedWeek.split("-").map(Number);
+        const end = new Date(y, m - 1, d_ + 6);
+        return `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, "0")}-${String(end.getDate()).padStart(2, "0")}`;
+      })()
+    : "";
+
+  const runMutation = useMutation({
+    mutationFn: async () => {
+      if (!payDate) throw new Error("Tanggal bayar required");
+      if (!selectedWeek) throw new Error("Pilih minggu dulu");
+      if (!selectedWorkers.length) throw new Error("Pilih minimal 1 tukang");
+
+      // Process each selected worker
+      for (const [wid, sel] of selectedWorkers) {
+        const assignment = assignments.find(
+          (a) => a.worker_id === parseInt(wid),
+        );
+        if (!assignment) continue;
+
+        const workerPay = calcWorkerPay(wid);
+        const wTs = byWorker[wid] || [];
+        const worker = assignment.worker;
+
+        const wage = await workersApi.createWage({
+          assignment_id: assignment.id,
+          worker_id: parseInt(wid),
+          project_id: project?.id,
+          payment_date: payDate,
+          period_start: wTs[0]?.work_date,
+          period_end: wTs[wTs.length - 1]?.work_date,
+          days_worked: wTs.length,
+          rate_snapshot: parseFloat(assignment.rate_amount || 0),
+          gross_amount: workerPay,
+          deduction: 0,
+          net_amount: workerPay,
+          notes: notes || `Payroll minggu ${selectedWeek}`,
+        });
+
+        await timesheetsApi.markPaid(sel.tsIds, Number(wage.id));
+
+        await ledgerApi.createExpense({
+          entry_date: payDate,
+          entry_type: "expense",
+          description: `Upah ${worker?.full_name} — ${wTs.length} hari (${selectedWeek})`,
+          paid_to: worker?.full_name || "",
+          gross_expense: workerPay,
+          discount_received: 0,
+          payment_method: payMethod,
+          project_id: project?.id || null,
+          notes: notes || null,
+        });
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: ["timesheets-project", project?.id, "unpaid"],
+      });
+      qc.invalidateQueries({ queryKey: ["timesheets"] });
+      qc.invalidateQueries({ queryKey: ["wages"] });
+      qc.invalidateQueries({ queryKey: ["ledger"] });
+      toast.success(
+        `Payroll ${selectedWorkers.length} tukang berhasil diproses!`,
+      );
+      onClose();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  return (
+    <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
+      <div
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 shrink-0">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+              <Users size={16} className="text-emerald-600" />
+              Payroll Run — {project?.project_name}
+            </h3>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Proses pembayaran semua tukang sekaligus dalam satu minggu
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 p-5 space-y-4">
+          {/* Step 1: Pilih Minggu */}
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-2">
+              1. Pilih Minggu
+            </label>
+            {isLoading ? (
+              <div className="text-xs text-gray-400 text-center py-4">
+                Loading timesheets...
+              </div>
+            ) : weekOptions.length === 0 ? (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
+                Tidak ada timesheet yang belum dibayar. Input hari kerja di
+                Timesheet masing-masing tukang dulu.
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                {weekOptions.map(([wk, wTs]) => {
+                  // Parse weekStart string manual
+                  const [wy, wm, wd] = wk.split("-").map(Number);
+                  const weekEndDate = new Date(wy, wm - 1, wd + 6);
+                  const weekEndStr = `${weekEndDate.getFullYear()}-${String(weekEndDate.getMonth() + 1).padStart(2, "0")}-${String(weekEndDate.getDate()).padStart(2, "0")}`;
+                  const total = wTs.length;
+                  const workers = [...new Set(wTs.map((ts) => ts.worker_id))]
+                    .length;
+                  return (
+                    <button
+                      key={wk}
+                      type="button"
+                      onClick={() => handleWeekChange(wk)}
+                      className={`text-left p-3 rounded-xl border transition-all ${
+                        selectedWeek === wk
+                          ? "border-emerald-500 bg-emerald-50"
+                          : "border-gray-200 hover:border-emerald-300 hover:bg-gray-50"
+                      }`}
+                    >
+                      <div className="text-xs font-semibold text-gray-800">
+                        {formatDate(wk)} – {formatDate(weekEndStr)}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        {workers} tukang · {total} hari kerja
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Step 2: Detail tukang minggu ini */}
+          {selectedWeek && Object.keys(byWorker).length > 0 && (
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-2">
+                2. Verifikasi Hari Kerja Tukang
+              </label>
+              <div className="border border-gray-200 rounded-xl overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="text-left px-3 py-2 font-medium text-gray-500 w-8">
+                        <input
+                          type="checkbox"
+                          checked={
+                            Object.keys(byWorker).length > 0 &&
+                            Object.keys(byWorker).every(
+                              (wid) => workerSel[String(wid)]?.selected,
+                            )
+                          }
+                          onChange={(e) => {
+                            const upd = {};
+                            Object.keys(byWorker).forEach((wid) => {
+                              upd[String(wid)] = {
+                                ...workerSel[String(wid)],
+                                selected: e.target.checked,
+                              };
+                            });
+                            setWorkerSel((prev) => ({ ...prev, ...upd }));
+                          }}
+                          className="rounded border-gray-300 text-emerald-600"
+                        />
+                      </th>
+                      <th className="text-left px-3 py-2 font-medium text-gray-500">
+                        Tukang
+                      </th>
+                      <th className="text-center px-3 py-2 font-medium text-gray-500">
+                        Hari
+                      </th>
+                      <th className="text-center px-3 py-2 font-medium text-gray-500">
+                        Lembur
+                      </th>
+                      <th className="text-right px-3 py-2 font-medium text-gray-500">
+                        Upah
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {Object.entries(byWorker).map(([wid, wTs]) => {
+                      const assignment = assignments.find(
+                        (a) => a.worker_id === parseInt(wid),
+                      );
+                      const worker = assignment?.worker;
+                      const pay = calcWorkerPay(wid);
+                      const ot = wTs.reduce(
+                        (s, ts) => s + parseFloat(ts.overtime_hours || 0),
+                        0,
+                      );
+                      const sel = workerSel[wid]?.selected ?? true;
+                      const days = wTs.map(
+                        (ts) => DAY_LABELS[new Date(ts.work_date).getDay()],
+                      );
+
+                      return (
+                        <tr
+                          key={wid}
+                          className={`${!sel ? "opacity-40" : ""} hover:bg-gray-50`}
+                        >
+                          <td className="px-3 py-2.5 text-center">
+                            <input
+                              type="checkbox"
+                              checked={sel}
+                              onChange={() => toggleWorker(wid)}
+                              className="rounded border-gray-300 text-emerald-600"
+                            />
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <div className="flex items-center gap-2">
+                              <div className="w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center text-xs font-semibold text-emerald-700 shrink-0">
+                                {worker?.full_name
+                                  ?.split(" ")
+                                  .slice(0, 2)
+                                  .map((n) => n[0])
+                                  .join("")
+                                  .toUpperCase()}
+                              </div>
+                              <div>
+                                <div className="font-medium text-gray-900">
+                                  {worker?.full_name}
+                                </div>
+                                <div className="text-gray-400">
+                                  {
+                                    ROLE_OPTIONS.find(
+                                      (r) => r.value === worker?.role,
+                                    )?.label
+                                  }
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-3 py-2.5 text-center">
+                            <div className="font-medium">{wTs.length} hari</div>
+                            <div className="text-gray-400">
+                              {days.join(", ")}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2.5 text-center">
+                            {ot > 0 ? (
+                              <span className="text-orange-500 font-medium">
+                                {ot}j
+                              </span>
+                            ) : (
+                              <span className="text-gray-300">-</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2.5 text-right font-semibold text-gray-900">
+                            {formatRupiah(pay)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-emerald-50 border-t-2 border-emerald-200">
+                      <td
+                        colSpan={4}
+                        className="px-3 py-2.5 text-xs font-semibold text-emerald-700"
+                      >
+                        Total ({selectedWorkers.length} tukang dipilih)
+                      </td>
+                      <td className="px-3 py-2.5 text-right font-bold text-emerald-700 text-sm">
+                        {formatRupiah(grandTotal)}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Step 3: Info pembayaran */}
+          {selectedWeek && selectedWorkers.length > 0 && (
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-2">
+                3. Info Pembayaran
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  label="Tanggal Bayar *"
+                  type="date"
+                  value={payDate}
+                  onChange={(e) => setPayDate(e.target.value)}
+                />
+                <Select
+                  label="Metode Bayar"
+                  value={payMethod}
+                  onChange={(e) => setPayMethod(e.target.value)}
+                >
+                  {PAYMENT_METHOD_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </Select>
+                <Input
+                  label="Catatan"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="optional"
+                  className="col-span-2"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        {selectedWeek && selectedWorkers.length > 0 && (
+          <div className="px-5 py-4 border-t border-gray-200 shrink-0">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-xs text-gray-500">
+                Minggu {formatDate(selectedWeek)} – {formatDate(weekEnd)} ·
+                {selectedWorkers.length} tukang · Total{" "}
+                {formatRupiah(grandTotal)}
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="primary"
+              className="w-full"
+              loading={runMutation.isPending}
+              disabled={!payDate}
+              onClick={() => runMutation.mutate()}
+            >
+              🚀 Proses Payroll {selectedWorkers.length} Tukang ={" "}
+              {formatRupiah(grandTotal)}
+            </Button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Tab: Payment Terms ──────────────────────────────────────
 function TabPayments({
   payments,
   setPayments,
@@ -124,6 +1435,7 @@ function TabPayments({
 }) {
   const qc = useQueryClient();
   const [recordFor, setRecordFor] = useState(null);
+  const [savingTermIdx, setSavingTermIdx] = useState(null);
   const [payForm, setPayForm] = useState({
     entry_date: "",
     gross_amount: "",
@@ -133,14 +1445,10 @@ function TabPayments({
     notes: "",
   });
 
-  const [savingTermIdx, setSavingTermIdx] = useState(null);
-
   const saveSingleTerm = async (i, pay) => {
-    // Validasi
     if (!pay.term_type) return toast.error("Term type is required");
     if (!pay.amount && !pay.percentage)
       return toast.error("Amount or percentage is required");
-
     setSavingTermIdx(i);
     try {
       const payload = {
@@ -153,10 +1461,7 @@ function TabPayments({
         status: pay.status || "unpaid",
         notes: pay.notes || null,
       };
-
       const saved = await projectsApi.addPayment(projectId, payload);
-
-      // Update baris di state dengan data dari backend (sekarang punya id)
       setPayments((prev) =>
         prev.map((it, idx) =>
           idx === i
@@ -171,7 +1476,6 @@ function TabPayments({
             : it,
         ),
       );
-
       toast.success("Payment term saved!");
       if (onDataRefresh) await onDataRefresh();
     } catch (e) {
@@ -202,28 +1506,20 @@ function TabPayments({
       p.map((it, idx) => (idx === i ? { ...it, [f]: v } : it)),
     );
 
-  // BARU — block jika sudah ada pembayaran
   const remove = (i) => {
     const pay = payments[i];
-
-    // Baris baru yang belum disimpan — boleh hapus langsung
     if (!pay.id) {
       setPayments((p) => p.filter((_, idx) => idx !== i));
       return;
     }
-
     const amtPaid = parseFloat(pay.amount_paid || 0);
-
-    // Sudah ada pembayaran — tidak boleh hapus
     if (amtPaid > 0) {
       toast.error(
-        `Cannot delete "${pay.term_label || "this term"}" — it has received payments of ${formatRupiah(amtPaid)}. Reverse the payment in Ledger first.`,
+        `Cannot delete "${pay.term_label || "this term"}" — paid ${formatRupiah(amtPaid)}. Void in Ledger first.`,
         { duration: 5000 },
       );
       return;
     }
-
-    // Belum ada pembayaran — konfirmasi lalu hapus
     if (confirm(`Delete payment term "${pay.term_label || "this term"}"?`)) {
       setDeletedPaymentIds((prev) => [...prev, pay.id]);
       setPayments((p) => p.filter((_, idx) => idx !== i));
@@ -233,13 +1529,14 @@ function TabPayments({
   const handlePct = (i, pct) => {
     set(i, "percentage", pct);
     const fee = parseFloat(parseCurrency(architectFee)) || 0;
-    if (fee > 0 && pct) {
-      const amt = Math.round(((parseFloat(pct) || 0) / 100) * fee);
-      set(i, "amount", String(amt));
-    }
+    if (fee > 0 && pct)
+      set(
+        i,
+        "amount",
+        String(Math.round(((parseFloat(pct) || 0) / 100) * fee)),
+      );
   };
 
-  // Record payment
   const setPay = (f, v) => setPayForm((p) => ({ ...p, [f]: v }));
   const gross_pay = parseFloat(parseCurrency(payForm.gross_amount)) || 0;
   const isQris = payForm.payment_method === "qris";
@@ -263,13 +1560,9 @@ function TabPayments({
         notes: "",
       });
       toast.success("Payment recorded!");
-
-      // ← KUNCI: refresh data project lalu update payments state
       if (onDataRefresh) {
         const fresh = await onDataRefresh();
-        if (fresh?.payments) {
-          setPayments(parsePayments(fresh));
-        }
+        if (fresh?.payments) setPayments(parsePayments(fresh));
       }
     },
     onError: (e) => toast.error(e.message),
@@ -306,7 +1599,6 @@ function TabPayments({
     (s, p) => s + (parseFloat(p.amount_paid) || 0),
     0,
   );
-
   const inputCls =
     "w-full text-xs border border-gray-200 rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500";
 
@@ -396,7 +1688,6 @@ function TabPayments({
                       <td className="px-3 py-2 text-center text-xs text-gray-400">
                         {i + 1}
                       </td>
-
                       <td className="px-2 py-1.5">
                         <select
                           value={pay.term_type}
@@ -408,7 +1699,6 @@ function TabPayments({
                           <option value="final">Final</option>
                         </select>
                       </td>
-
                       <td className="px-2 py-1.5">
                         <input
                           type="text"
@@ -418,7 +1708,6 @@ function TabPayments({
                           className={inputCls}
                         />
                       </td>
-
                       <td className="px-2 py-1.5">
                         <input
                           type="number"
@@ -431,7 +1720,6 @@ function TabPayments({
                           className={`${inputCls} text-right`}
                         />
                       </td>
-
                       <td className="px-2 py-1.5">
                         <div className="relative">
                           <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
@@ -459,7 +1747,6 @@ function TabPayments({
                           />
                         </div>
                       </td>
-
                       <td className="px-2 py-1.5">
                         <input
                           type="date"
@@ -468,7 +1755,6 @@ function TabPayments({
                           className={inputCls}
                         />
                       </td>
-
                       <td className="px-2 py-1.5">
                         <input
                           type="date"
@@ -477,7 +1763,6 @@ function TabPayments({
                           className={inputCls}
                         />
                       </td>
-
                       <td className="px-2 py-1.5">
                         <select
                           value={pay.status || "unpaid"}
@@ -489,30 +1774,26 @@ function TabPayments({
                           <option value="paid">Paid</option>
                         </select>
                       </td>
-
                       <td className="px-2 py-2 text-right">
-                        <div>
-                          <span
-                            className={`text-xs font-semibold ${amtPaid > 0 ? "text-emerald-700" : "text-gray-300"}`}
-                          >
-                            {amtPaid > 0 ? formatRupiah(amtPaid) : "-"}
-                          </span>
-                          {pay.status === "partial" && (
-                            <div className="mt-1">
-                              <div className="h-1 bg-gray-200 rounded-full overflow-hidden w-full">
-                                <div
-                                  className="h-full bg-amber-400 rounded-full"
-                                  style={{ width: `${paidPct}%` }}
-                                />
-                              </div>
-                              <div className="text-xs text-gray-400 mt-0.5 text-right">
-                                -{formatRupiah(remaining)}
-                              </div>
+                        <span
+                          className={`text-xs font-semibold ${amtPaid > 0 ? "text-emerald-700" : "text-gray-300"}`}
+                        >
+                          {amtPaid > 0 ? formatRupiah(amtPaid) : "-"}
+                        </span>
+                        {pay.status === "partial" && (
+                          <div className="mt-1">
+                            <div className="h-1 bg-gray-200 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-amber-400 rounded-full"
+                                style={{ width: `${paidPct}%` }}
+                              />
                             </div>
-                          )}
-                        </div>
+                            <div className="text-xs text-gray-400 mt-0.5 text-right">
+                              -{formatRupiah(remaining)}
+                            </div>
+                          </div>
+                        )}
                       </td>
-
                       <td className="px-2 py-1.5">
                         <input
                           type="text"
@@ -522,18 +1803,14 @@ function TabPayments({
                           className={inputCls}
                         />
                       </td>
-
-                      {/* Actions */}
                       <td className="px-2 py-1.5">
                         <div className="flex items-center gap-1 justify-end">
-                          {/* Baris baru (belum punya id) — tampilkan Save & Cancel */}
                           {!pay.id ? (
                             <>
                               <button
                                 type="button"
                                 onClick={() => saveSingleTerm(i, pay)}
                                 disabled={savingTermIdx === i}
-                                title="Save term"
                                 className="p-1 text-emerald-600 hover:bg-emerald-100 rounded transition-all"
                               >
                                 {savingTermIdx === i ? (
@@ -545,7 +1822,6 @@ function TabPayments({
                               <button
                                 type="button"
                                 onClick={() => remove(i)}
-                                title="Cancel"
                                 className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-all"
                               >
                                 <X size={13} />
@@ -553,7 +1829,6 @@ function TabPayments({
                             </>
                           ) : (
                             <>
-                              {/* Baris lama (sudah punya id) — Record Payment & Delete */}
                               {pay.status !== "paid" && (
                                 <button
                                   type="button"
@@ -633,8 +1908,7 @@ function TabPayments({
                 <X size={16} />
               </button>
             </div>
-            <div onSubmit={handleRecord} className="p-5 space-y-4">
-              {/* Term summary */}
+            <div className="p-5 space-y-4">
               <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 space-y-1 text-xs">
                 <div className="flex justify-between">
                   <span className="text-gray-500">Term Amount</span>
@@ -661,7 +1935,6 @@ function TabPayments({
                   </span>
                 </div>
               </div>
-
               <div className="grid grid-cols-2 gap-3">
                 <Input
                   label="Payment Date *"
@@ -714,7 +1987,6 @@ function TabPayments({
                   className="col-span-2"
                 />
               </div>
-
               {isQris && gross_pay > 0 && (
                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs space-y-1">
                   <div className="flex items-center gap-1.5 text-amber-700 font-semibold mb-1">
@@ -738,7 +2010,6 @@ function TabPayments({
                   </div>
                 </div>
               )}
-
               <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
                 <Button
                   type="button"
@@ -764,579 +2035,12 @@ function TabPayments({
   );
 }
 
-function PaymentModal({ payModal, onClose, project, onSuccess }) {
-  const { type, assignment } = payModal;
-  const qc = useQueryClient();
-  const worker = assignment.worker;
-
-  // ── Lump Sum ──────────────────────────────────────────
-  const [lumpForm, setLumpForm] = useState({
-    payment_date: "",
-    amount: String(Math.round(parseFloat(assignment.rate_amount))),
-    notes: "",
-  });
-
-  // ── Timesheet — pilih hari kerja ──────────────────────
-  const [selectedDates, setSelectedDates] = useState([]);
-  const [tsPayDate, setTsPayDate] = useState("");
-  const [tsNotes, setTsNotes] = useState("");
-
-  // ── Weekly — generate jadwal ──────────────────────────
-  const [weeklyDates, setWeeklyDates] = useState([]);
-  const [weeklyAttendance, setWeeklyAttendance] = useState({});
-  // weeklyAttendance = { 'YYYY-MM-DD': { present: true, days: 5 } }
-
-  const rate = parseFloat(assignment.rate_amount) || 0;
-
-  // Generate weekly payment dates dari start-end project
-  const generateWeeklyDates = () => {
-    if (!project?.start_date || !project?.end_date) return;
-    const dates = [];
-    let current = new Date(project.start_date);
-    const end = new Date(project.end_date);
-    // Maju ke Sabtu pertama
-    while (current.getDay() !== 6) current.setDate(current.getDate() + 1);
-    while (current <= end) {
-      dates.push(current.toISOString().split("T")[0]);
-      current.setDate(current.getDate() + 7);
-    }
-    setWeeklyDates(dates);
-    // Init attendance
-    const att = {};
-    dates.forEach((d) => {
-      att[d] = { days: 5, pay: true };
-    });
-    setWeeklyAttendance(att);
-  };
-
-  const wageMutation = useMutation({
-    mutationFn: async (payload) => {
-      const wage = await workersApi.createWage(payload);
-      // Catat ke ledger
-      await ledgerApi.createExpense({
-        entry_date: payload.payment_date,
-        entry_type: "expense",
-        description: `Upah ${worker?.full_name} — ${project?.project_name}`,
-        paid_to: worker?.full_name || "",
-        gross_expense: payload.gross_amount,
-        discount_received: 0,
-        payment_method: "cash",
-        project_id: project?.id || null,
-        notes: payload.notes || "",
-      });
-      return wage;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["wages"] });
-      qc.invalidateQueries({ queryKey: ["ledger"] });
-      onSuccess();
-    },
-    onError: (e) => toast.error(e.message),
-  });
-
-  const handleLumpSum = () => {
-    if (!lumpForm.payment_date) return toast.error("Payment date required");
-    const amt = parseFloat(parseCurrency(lumpForm.amount)) || 0;
-    if (!amt) return toast.error("Amount required");
-    wageMutation.mutate({
-      assignment_id: assignment.id,
-      worker_id: assignment.worker_id,
-      project_id: project?.id,
-      payment_date: lumpForm.payment_date,
-      rate_snapshot: rate,
-      gross_amount: amt,
-      deduction: 0,
-      net_amount: amt,
-      notes: lumpForm.notes || null,
-    });
-  };
-
-  const handleTimesheet = () => {
-    if (!selectedDates.length) return toast.error("Pilih minimal 1 hari kerja");
-    if (!tsPayDate) return toast.error("Tanggal bayar required");
-    const days = selectedDates.length;
-    const gross = days * rate;
-    wageMutation.mutate({
-      assignment_id: assignment.id,
-      worker_id: assignment.worker_id,
-      project_id: project?.id,
-      payment_date: tsPayDate,
-      period_start: selectedDates[0],
-      period_end: selectedDates[selectedDates.length - 1],
-      days_worked: days,
-      rate_snapshot: rate,
-      gross_amount: gross,
-      deduction: 0,
-      net_amount: gross,
-      notes: tsNotes || `${days} hari kerja: ${selectedDates.join(", ")}`,
-    });
-  };
-
-  const handleWeekly = (payDate) => {
-    const att = weeklyAttendance[payDate];
-    if (!att?.pay) return;
-    // Hitung hari kerja aktual minggu ini (bisa kurang dari 5)
-    const daysWorked = parseInt(att.days) || 0;
-    if (!daysWorked) return toast.error("Hari kerja = 0, tidak perlu dibayar");
-    const gross = daysWorked * rate;
-    wageMutation.mutate({
-      assignment_id: assignment.id,
-      worker_id: assignment.worker_id,
-      project_id: project?.id,
-      payment_date: payDate,
-      days_worked: daysWorked,
-      rate_snapshot: rate,
-      gross_amount: gross,
-      deduction: 0,
-      net_amount: gross,
-      notes: `Weekly payment — ${daysWorked} hari`,
-    });
-  };
-
-  const toggleDate = (dateStr) => {
-    setSelectedDates((prev) =>
-      prev.includes(dateStr)
-        ? prev.filter((d) => d !== dateStr)
-        : [...prev, dateStr].sort(),
-    );
-  };
-
-  // Generate calendar untuk timesheet (bulan ini dan bulan depan)
-  const generateCalendar = () => {
-    const start = project?.start_date
-      ? new Date(project.start_date)
-      : new Date();
-    const end = project?.end_date ? new Date(project.end_date) : new Date();
-    const dates = [];
-    let cur = new Date(start);
-    while (cur <= end) {
-      dates.push(cur.toISOString().split("T")[0]);
-      cur.setDate(cur.getDate() + 1);
-    }
-    return dates;
-  };
-
-  const calendarDates = generateCalendar();
-  const totalTimesheet = selectedDates.length * rate;
-
-  return (
-    <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
-      <div
-        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-        onClick={onClose}
-      />
-      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[85vh] flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
-          <div>
-            <h3 className="text-sm font-semibold text-gray-900">
-              {type === "lump_sum"
-                ? "💰 Bayar Lunas"
-                : type === "timesheet"
-                  ? "📅 Timesheet Harian"
-                  : type === "per_unit"
-                    ? "📦 Bayar Per Unit"
-                    : "📆 Weekly Payroll"}
-            </h3>
-            <p className="text-xs text-gray-400 mt-0.5">
-              {worker?.full_name} ·{" "}
-              {ROLE_OPTIONS.find((r) => r.value === worker?.role)?.label} ·{" "}
-              {formatRupiah(rate)}/
-              {assignment.rate_type === "daily" ? "hari" : "unit"}
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
-          >
-            <X size={16} />
-          </button>
-        </div>
-
-        <div className="overflow-y-auto flex-1 p-5 space-y-4">
-          {/* ── LUMP SUM ── */}
-          {type === "lump_sum" && (
-            <div className="space-y-3">
-              <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 text-xs space-y-1">
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Rate borongan</span>
-                  <span className="font-medium">{formatRupiah(rate)}</span>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <Input
-                  label="Tanggal Bayar *"
-                  type="date"
-                  value={lumpForm.payment_date}
-                  onChange={(e) =>
-                    setLumpForm((p) => ({ ...p, payment_date: e.target.value }))
-                  }
-                />
-                <CurrencyInput
-                  label="Jumlah Dibayar *"
-                  value={lumpForm.amount}
-                  onChange={(v) => setLumpForm((p) => ({ ...p, amount: v }))}
-                />
-              </div>
-              <Input
-                label="Catatan"
-                value={lumpForm.notes}
-                onChange={(e) =>
-                  setLumpForm((p) => ({ ...p, notes: e.target.value }))
-                }
-                placeholder="optional"
-              />
-              <Button
-                type="button"
-                variant="primary"
-                className="w-full"
-                loading={wageMutation.isPending}
-                onClick={handleLumpSum}
-              >
-                Simpan Pembayaran
-              </Button>
-            </div>
-          )}
-
-          {/* ── TIMESHEET (pilih hari kerja) ── */}
-          {type === "timesheet" && (
-            <div className="space-y-3">
-              <p className="text-xs text-gray-500">
-                Pilih hari-hari yang dia masuk kerja, lalu klik "Proses
-                Pembayaran".
-              </p>
-
-              {/* Calendar grid */}
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
-                <div className="grid grid-cols-7 bg-gray-50 border-b border-gray-200">
-                  {["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"].map(
-                    (d) => (
-                      <div
-                        key={d}
-                        className="text-center text-xs font-medium text-gray-500 py-1.5"
-                      >
-                        {d}
-                      </div>
-                    ),
-                  )}
-                </div>
-                <div className="p-2">
-                  {/* Group by week */}
-                  {(() => {
-                    if (!calendarDates.length)
-                      return (
-                        <p className="text-center text-xs text-gray-400 py-4">
-                          Set project start/end date dulu
-                        </p>
-                      );
-                    const firstDate = new Date(calendarDates[0]);
-                    const startDay = firstDate.getDay();
-                    const cells = [];
-                    // Empty cells before first date
-                    for (let i = 0; i < startDay; i++) cells.push(null);
-                    calendarDates.forEach((d) => cells.push(d));
-                    // Pad to full week
-                    while (cells.length % 7 !== 0) cells.push(null);
-                    const weeks = [];
-                    for (let i = 0; i < cells.length; i += 7)
-                      weeks.push(cells.slice(i, i + 7));
-                    return weeks.map((week, wi) => (
-                      <div key={wi} className="grid grid-cols-7 gap-0.5 mb-0.5">
-                        {week.map((d, di) => {
-                          if (!d) return <div key={di} />;
-                          const selected = selectedDates.includes(d);
-                          const dayNum = new Date(d).getDate();
-                          return (
-                            <button
-                              key={d}
-                              type="button"
-                              onClick={() => toggleDate(d)}
-                              className={`aspect-square rounded text-xs font-medium transition-all ${
-                                selected
-                                  ? "bg-emerald-600 text-white"
-                                  : "hover:bg-emerald-50 text-gray-700"
-                              }`}
-                            >
-                              {dayNum}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ));
-                  })()}
-                </div>
-              </div>
-
-              {selectedDates.length > 0 && (
-                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs space-y-1">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">
-                      {selectedDates.length} hari × {formatRupiah(rate)}
-                    </span>
-                    <span className="font-bold text-emerald-700">
-                      {formatRupiah(totalTimesheet)}
-                    </span>
-                  </div>
-                  <div className="text-gray-400 text-xs">
-                    {selectedDates.join(", ")}
-                  </div>
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-3">
-                <Input
-                  label="Tanggal Bayar *"
-                  type="date"
-                  value={tsPayDate}
-                  onChange={(e) => setTsPayDate(e.target.value)}
-                />
-                <Input
-                  label="Catatan"
-                  value={tsNotes}
-                  onChange={(e) => setTsNotes(e.target.value)}
-                  placeholder="optional"
-                />
-              </div>
-
-              <Button
-                type="button"
-                variant="primary"
-                className="w-full"
-                loading={wageMutation.isPending}
-                disabled={!selectedDates.length || !tsPayDate}
-                onClick={handleTimesheet}
-              >
-                Proses Pembayaran ({selectedDates.length} hari ={" "}
-                {formatRupiah(totalTimesheet)})
-              </Button>
-            </div>
-          )}
-
-          {/* ── PER UNIT ── */}
-          {type === "per_unit" && (
-            <div className="space-y-3">
-              <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Rate per unit</span>
-                  <span className="font-medium">{formatRupiah(rate)}</span>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <Input
-                  label="Tanggal Bayar *"
-                  type="date"
-                  value={lumpForm.payment_date}
-                  onChange={(e) =>
-                    setLumpForm((p) => ({ ...p, payment_date: e.target.value }))
-                  }
-                />
-                <Input
-                  label="Jumlah Unit *"
-                  type="number"
-                  min="0"
-                  value={lumpForm.units || ""}
-                  onChange={(e) =>
-                    setLumpForm((p) => ({ ...p, units: e.target.value }))
-                  }
-                  placeholder="0"
-                />
-              </div>
-              {lumpForm.units > 0 && (
-                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs flex justify-between">
-                  <span>
-                    {lumpForm.units} unit × {formatRupiah(rate)}
-                  </span>
-                  <span className="font-bold text-emerald-700">
-                    {formatRupiah(lumpForm.units * rate)}
-                  </span>
-                </div>
-              )}
-              <Input
-                label="Catatan"
-                value={lumpForm.notes}
-                onChange={(e) =>
-                  setLumpForm((p) => ({ ...p, notes: e.target.value }))
-                }
-                placeholder="optional"
-              />
-              <Button
-                type="button"
-                variant="primary"
-                className="w-full"
-                loading={wageMutation.isPending}
-                onClick={() => {
-                  const units = parseFloat(lumpForm.units) || 0;
-                  if (!lumpForm.payment_date)
-                    return toast.error("Tanggal bayar required");
-                  if (!units) return toast.error("Jumlah unit required");
-                  const gross = units * rate;
-                  wageMutation.mutate({
-                    assignment_id: assignment.id,
-                    worker_id: assignment.worker_id,
-                    project_id: project?.id,
-                    payment_date: lumpForm.payment_date,
-                    unit_count: units,
-                    rate_snapshot: rate,
-                    gross_amount: gross,
-                    deduction: 0,
-                    net_amount: gross,
-                    notes: lumpForm.notes || `${units} unit`,
-                  });
-                }}
-              >
-                Simpan Pembayaran
-              </Button>
-            </div>
-          )}
-
-          {/* ── WEEKLY PAYROLL ── */}
-          {type === "weekly" && (
-            <div className="space-y-3">
-              <p className="text-xs text-gray-500">
-                Jadwal bayar mingguan berdasarkan durasi proyek. Edit jumlah
-                hari kerja tiap minggu (kalau ada yang tidak masuk).
-              </p>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={generateWeeklyDates}
-              >
-                Generate Jadwal dari Tanggal Proyek
-              </Button>
-
-              {weeklyDates.length > 0 && (
-                <div className="border border-gray-200 rounded-lg overflow-hidden">
-                  <table className="w-full text-xs">
-                    <thead className="bg-gray-50 border-b border-gray-200">
-                      <tr>
-                        <th className="text-left px-3 py-2 font-medium text-gray-500">
-                          Tanggal Bayar
-                        </th>
-                        <th className="text-right px-3 py-2 font-medium text-gray-500">
-                          Hari Kerja
-                        </th>
-                        <th className="text-right px-3 py-2 font-medium text-gray-500">
-                          Total
-                        </th>
-                        <th className="px-3 py-2 w-20 text-center font-medium text-gray-500">
-                          Bayar?
-                        </th>
-                        <th className="px-3 py-2 w-16"></th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {weeklyDates.map((d) => {
-                        const att = weeklyAttendance[d] || {
-                          days: 5,
-                          pay: true,
-                        };
-                        const days = parseInt(att.days) || 0;
-                        const amt = days * rate;
-                        return (
-                          <tr key={d} className={!att.pay ? "opacity-40" : ""}>
-                            <td className="px-3 py-2 font-medium text-gray-800">
-                              {formatDate(d)}
-                            </td>
-                            <td className="px-3 py-2 text-right">
-                              <input
-                                type="number"
-                                min="0"
-                                max="7"
-                                value={att.days}
-                                onChange={(e) =>
-                                  setWeeklyAttendance((prev) => ({
-                                    ...prev,
-                                    [d]: { ...att, days: e.target.value },
-                                  }))
-                                }
-                                className="w-12 text-right border border-gray-200 rounded px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                              />
-                              <span className="text-gray-400 ml-1">hari</span>
-                            </td>
-                            <td className="px-3 py-2 text-right font-semibold text-gray-900">
-                              {formatRupiah(amt)}
-                            </td>
-                            <td className="px-3 py-2 text-center">
-                              <input
-                                type="checkbox"
-                                checked={att.pay}
-                                onChange={(e) =>
-                                  setWeeklyAttendance((prev) => ({
-                                    ...prev,
-                                    [d]: { ...att, pay: e.target.checked },
-                                  }))
-                                }
-                                className="rounded border-gray-300 text-emerald-600"
-                              />
-                            </td>
-                            <td className="px-3 py-2">
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="ghost"
-                                loading={wageMutation.isPending}
-                                onClick={() => handleWeekly(d)}
-                                disabled={!att.pay || !days}
-                              >
-                                Bayar
-                              </Button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                    <tfoot className="bg-gray-50 border-t border-gray-200">
-                      <tr>
-                        <td className="px-3 py-2 text-xs font-semibold text-gray-500">
-                          Total (
-                          {
-                            weeklyDates.filter((d) => weeklyAttendance[d]?.pay)
-                              .length
-                          }{" "}
-                          minggu)
-                        </td>
-                        <td className="px-3 py-2 text-right text-xs font-semibold text-gray-700">
-                          {weeklyDates.reduce(
-                            (s, d) =>
-                              s + (parseInt(weeklyAttendance[d]?.days) || 0),
-                            0,
-                          )}{" "}
-                          hari
-                        </td>
-                        <td className="px-3 py-2 text-right text-xs font-semibold text-emerald-700">
-                          {formatRupiah(
-                            weeklyDates.reduce((s, d) => {
-                              const att = weeklyAttendance[d];
-                              return (
-                                s +
-                                (att?.pay
-                                  ? (parseInt(att.days) || 0) * rate
-                                  : 0)
-                              );
-                            }, 0),
-                          )}
-                        </td>
-                        <td colSpan={2} />
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Tab: Workers — Table Style ────────────────────────────
+// ─── Tab: Workers ────────────────────────────────────────────
 function TabWorkers({ project }) {
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
-  const [payModal, setPayModal] = useState(null);
-  // payModal = { type: 'lump_sum'|'timesheet'|'weekly', assignment: {...} }
+  const [timesheetModal, setTimesheetModal] = useState(null);
+  const [payrollOpen, setPayrollOpen] = useState(false);
   const [form, setForm] = useState({
     worker_id: "",
     rate_type: "daily",
@@ -1367,7 +2071,7 @@ function TabWorkers({ project }) {
             .filter((a) => a.project_id === project.id)
             .forEach((a) => result.push({ ...a, worker: w }));
         } catch {
-          // ignore individual worker fetch errors
+          /* ignore */
         }
       }
       return result;
@@ -1432,20 +2136,34 @@ function TabWorkers({ project }) {
       </div>
     );
 
+  const dailyWorkers = assignments.filter((a) => a.rate_type === "daily");
+
   return (
     <div className="p-5 space-y-4">
       <div className="flex items-center justify-between">
         <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-widest">
           Workers ({assignments.length})
         </h4>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={() => setShowForm((s) => !s)}
-        >
-          <Plus size={14} /> Assign Worker
-        </Button>
+        <div className="flex items-center gap-2">
+          {dailyWorkers.length > 0 && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setPayrollOpen(true)}
+            >
+              <Users size={14} /> Payroll Run
+            </Button>
+          )}
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowForm((s) => !s)}
+          >
+            <Plus size={14} /> Assign Worker
+          </Button>
+        </div>
       </div>
 
       <div className="border border-gray-200 rounded-xl overflow-hidden">
@@ -1463,7 +2181,7 @@ function TabWorkers({ project }) {
                   Role
                 </th>
                 <th className="text-left px-2 py-2.5 text-xs font-medium text-gray-500 w-28">
-                  Wage Type
+                  Tipe Upah
                 </th>
                 <th className="text-right px-2 py-2.5 text-xs font-medium text-gray-500 w-32">
                   Rate
@@ -1589,6 +2307,7 @@ function TabWorkers({ project }) {
                       className={inputCls}
                     />
                   </td>
+                  <td className="px-2 py-1.5"></td>
                   <td className="px-2 py-1.5">
                     <div className="flex gap-1">
                       <button
@@ -1613,17 +2332,16 @@ function TabWorkers({ project }) {
                 </tr>
               )}
 
-              {/* Existing Rows */}
               {isLoading ? (
                 <tr>
-                  <td colSpan={10} className="text-center py-6">
+                  <td colSpan={11} className="text-center py-6">
                     <div className="animate-spin rounded-full h-5 w-5 border-2 border-emerald-600 border-t-transparent mx-auto" />
                   </td>
                 </tr>
               ) : assignments.length === 0 && !showForm ? (
                 <tr>
                   <td
-                    colSpan={10}
+                    colSpan={11}
                     className="text-center py-8 text-gray-400 text-sm"
                   >
                     <HardHat size={24} className="mx-auto text-gray-300 mb-2" />
@@ -1678,50 +2396,33 @@ function TabWorkers({ project }) {
                     <td className="px-2 py-2.5 text-xs text-gray-400 italic">
                       {a.notes || "-"}
                     </td>
-                    {/* Payment action berdasarkan rate_type */}
                     <td className="px-2 py-2.5">
+                      {/* Single payment button per rate type */}
+                      {a.rate_type === "daily" && (
+                        <button
+                          type="button"
+                          onClick={() => setTimesheetModal(a)}
+                          className="text-xs px-2 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded hover:bg-blue-100 transition-all whitespace-nowrap"
+                        >
+                          📅 Timesheet
+                        </button>
+                      )}
                       {a.rate_type === "fixed" && (
                         <button
                           type="button"
-                          onClick={() =>
-                            setPayModal({ type: "lump_sum", assignment: a })
-                          }
+                          onClick={() => setTimesheetModal(a)}
                           className="text-xs px-2 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded hover:bg-emerald-100 transition-all whitespace-nowrap"
                         >
                           💰 Pay
                         </button>
                       )}
-                      {a.rate_type === "daily" && (
-                        <div className="flex gap-1">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setPayModal({ type: "timesheet", assignment: a })
-                            }
-                            className="text-xs px-2 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded hover:bg-blue-100 transition-all"
-                          >
-                            📅 Timesheet
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setPayModal({ type: "weekly", assignment: a })
-                            }
-                            className="text-xs px-2 py-1 bg-orange-50 text-orange-700 border border-orange-200 rounded hover:bg-orange-100 transition-all"
-                          >
-                            📆 Weekly
-                          </button>
-                        </div>
-                      )}
                       {a.rate_type === "per_unit" && (
                         <button
                           type="button"
-                          onClick={() =>
-                            setPayModal({ type: "per_unit", assignment: a })
-                          }
+                          onClick={() => setTimesheetModal(a)}
                           className="text-xs px-2 py-1 bg-purple-50 text-purple-700 border border-purple-200 rounded hover:bg-purple-100 transition-all whitespace-nowrap"
                         >
-                          📦 Pay Units
+                          📦 Units
                         </button>
                       )}
                     </td>
@@ -1744,25 +2445,27 @@ function TabWorkers({ project }) {
           </table>
         </div>
       </div>
-      {/* Payment Modal */}
-      {payModal && (
-        <PaymentModal
-          payModal={payModal}
-          onClose={() => setPayModal(null)}
+
+      {/* Modals */}
+      {timesheetModal && (
+        <TimesheetModal
+          assignment={timesheetModal}
           project={project}
-          onSuccess={() => {
-            setPayModal(null);
-            toast.success("Payment recorded!");
-          }}
+          onClose={() => setTimesheetModal(null)}
+        />
+      )}
+      {payrollOpen && (
+        <PayrollRunModal
+          project={project}
+          assignments={assignments}
+          onClose={() => setPayrollOpen(false)}
         />
       )}
     </div>
   );
 }
 
-// ─── Project Detail — Full Screen IFS Style ────────────────
-// Uses key={project?.id ?? 'new'} from parent to force remount
-// when switching between projects — no useEffect needed
+// ─── Project Detail ──────────────────────────────────────────
 function ProjectDetail({ project, open, onClose, onSave, saving, onRefresh }) {
   const [form, setForm] = useState(() => parseHeader(project));
   const [payments, setPayments] = useState(() => parsePayments(project));
@@ -1778,7 +2481,6 @@ function ProjectDetail({ project, open, onClose, onSave, saving, onRefresh }) {
     if (!form.client_name) return toast.error("Client name is required");
     if (!form.project_name) return toast.error("Project name is required");
     if (!form.received_date) return toast.error("Received date is required");
-
     onSave({
       ...form,
       rab_value: parseFloat(parseCurrency(form.rab_value)) || 0,
@@ -1815,7 +2517,7 @@ function ProjectDetail({ project, open, onClose, onSave, saving, onRefresh }) {
       className="fixed inset-0 z-50 flex flex-col"
       style={{ background: "#f9fafb" }}
     >
-      {/* Top Navigation Bar */}
+      {/* Nav bar */}
       <div className="flex items-center justify-between px-5 py-3 bg-white border-b border-gray-200 shrink-0">
         <div className="flex items-center gap-2 text-sm">
           <button
@@ -1858,7 +2560,7 @@ function ProjectDetail({ project, open, onClose, onSave, saving, onRefresh }) {
       >
         {/* Sticky Header */}
         <div className="bg-white border-b border-gray-200 shrink-0">
-          {/* Row 1: ID + Status + Stats */}
+          {/* Row 1 */}
           <div className="flex items-center gap-4 px-5 py-2.5 bg-gray-50 border-b border-gray-200">
             {project && (
               <span className="font-mono text-xs bg-white border border-gray-200 rounded-md px-2 py-1 text-emerald-700 font-semibold">
@@ -1879,11 +2581,7 @@ function ProjectDetail({ project, open, onClose, onSave, saving, onRefresh }) {
                 <option value="cancelled">Cancelled</option>
               </select>
             </div>
-
-            {/* Spacer */}
             <div className="flex-1" />
-
-            {/* Collected / Outstanding / Progress — kanan atas */}
             {project && (
               <div className="flex items-center gap-5">
                 <div className="text-right">
@@ -1928,7 +2626,7 @@ function ProjectDetail({ project, open, onClose, onSave, saving, onRefresh }) {
             )}
           </div>
 
-          {/* Row 2: Client fields */}
+          {/* Row 2: Client */}
           <div className="grid grid-cols-4 divide-x divide-gray-200 border-b border-gray-200">
             <div className="px-4 py-2.5">
               <div className={hLabel}>Client Name *</div>
@@ -2056,8 +2754,8 @@ function ProjectDetail({ project, open, onClose, onSave, saving, onRefresh }) {
           </div>
         </div>
 
-        {/* Tab Bar — sama persis dengan style tab di halaman lain */}
-        <div className="flex border-b border-gray-200 bg-white shrink-0 px-0">
+        {/* Tab Bar */}
+        <div className="flex border-b border-gray-200 bg-white shrink-0">
           {tabs.map((tab) => (
             <button
               key={tab.id}
@@ -2100,7 +2798,7 @@ function ProjectDetail({ project, open, onClose, onSave, saving, onRefresh }) {
   );
 }
 
-// ─── Main Page ─────────────────────────────────────────────
+// ─── Main Page ───────────────────────────────────────────────
 export default function Projects() {
   const qc = useQueryClient();
   const [detailOpen, setDetailOpen] = useState(false);
@@ -2122,7 +2820,8 @@ export default function Projects() {
 
   const createMutation = useMutation({
     mutationFn: async (data) => {
-      const { payments, deletedPaymentIds: _, ...projectData } = data;
+      // eslint-disable-next-line no-unused-vars
+      const { payments, deletedPaymentIds: _del, ...projectData } = data;
       const project = await projectsApi.create({
         ...projectData,
         payments: [],
@@ -2194,17 +2893,14 @@ export default function Projects() {
     }
   };
 
-  // Refresh project data after recording payment
-  // Called by TabPayments after successful payment record
-  // BARU — return fresh data
   const handleRefreshProject = async () => {
     if (!editData?.id) return;
     try {
       const fresh = await projectsApi.getById(editData.id);
       setEditData(fresh);
-      return fresh; // ← WAJIB: return supaya TabPayments bisa update state
+      return fresh;
     } catch {
-      // ignore
+      /* ignore */
     }
   };
 
@@ -2358,7 +3054,7 @@ export default function Projects() {
                   </div>
                 </div>
 
-                {/* Expanded Payment Terms */}
+                {/* Expanded payment terms */}
                 {isExp && (
                   <div className="border-t border-gray-100 px-5 py-4 bg-gray-50">
                     <div className="flex justify-between items-center mb-3">
@@ -2473,7 +3169,6 @@ export default function Projects() {
         </div>
       )}
 
-      {/* Full Screen Detail */}
       <ProjectDetail
         key={editData?.id ?? "new"}
         open={detailOpen}
