@@ -14,7 +14,7 @@ export const workersApi = {
   deleteAssignment:  (id)       => api.delete(`/workers/assignments/${id}`),
 
   // Wages
-  getWages:    (workerId) => api.get(`/workers/${workerId}/wages`).then(r => r.data),
+  getWages: (params) => api.get('/wages', { params }).then(r => r.data),
   getAllWages:  (params)   => api.get('/workers/wages/all', { params }).then(r => r.data),
   createWage:  (data)     => api.post('/workers/wages', data).then(r => r.data),
 }

@@ -412,12 +412,12 @@ function TimesheetModal({ assignment, project, onClose }) {
           {activeView === "calendar" && (
             <div className="p-5 space-y-4">
               {/* Summary cards */}
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-4 gap-3">
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
                   <div className="text-lg font-bold text-blue-700">
                     {timesheets.length}
                   </div>
-                  <div className="text-xs text-blue-600">Total Hari Kerja</div>
+                  <div className="text-xs text-blue-600">Total Hari</div>
                 </div>
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-center">
                   <div className="text-lg font-bold text-amber-700">
@@ -430,6 +430,15 @@ function TimesheetModal({ assignment, project, onClose }) {
                     {paidTs.length}
                   </div>
                   <div className="text-xs text-emerald-600">Sudah Dibayar</div>
+                </div>
+                {/* Tambah: Total sudah dibayar */}
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-center">
+                  <div className="text-sm font-bold text-gray-700">
+                    {formatRupiah(
+                      paidTs.reduce((s, ts) => s + calcPay(ts).total, 0),
+                    )}
+                  </div>
+                  <div className="text-xs text-gray-500">Total Dibayar</div>
                 </div>
               </div>
 
@@ -479,6 +488,12 @@ function TimesheetModal({ assignment, project, onClose }) {
 
                         // ── Hitung dateStr tanpa timezone ──────────────
                         const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+                        // ── Range check dari assignment ────────────────────────
+                        const startStr = assignment.start_date || null;
+                        const endStr = assignment.end_date || null;
+                        const isBeforeStart = startStr && dateStr < startStr;
+                        const isAfterEnd = endStr && dateStr > endStr;
+                        const isOutOfRange = isBeforeStart || isAfterEnd;
 
                         // ── Hitung today tanpa timezone ────────────────
                         const now = new Date();
@@ -494,6 +509,7 @@ function TimesheetModal({ assignment, project, onClose }) {
                           <div
                             key={dateStr}
                             onClick={() => {
+                              if (isOutOfRange) return; // ← block
                               if (!ts) {
                                 addMutation.mutate({
                                   assignment_id: assignment.id,
@@ -506,24 +522,28 @@ function TimesheetModal({ assignment, project, onClose }) {
                                 });
                               }
                             }}
-                            className={`relative group/cell rounded-lg text-xs flex flex-col items-center justify-center transition-all cursor-pointer min-h-14 ${
-                              ts
-                                ? ts.is_paid
-                                  ? "bg-emerald-100 border-2 border-emerald-300"
-                                  : "bg-blue-100 border-2 border-blue-300"
-                                : "hover:bg-gray-100 border border-transparent hover:border-gray-200"
+                            className={`relative group/cell rounded-lg text-xs flex flex-col items-center justify-center transition-all min-h-14 ${
+                              isOutOfRange
+                                ? "opacity-25 cursor-not-allowed bg-gray-50" // ← out of range: redup, tidak bisa klik
+                                : ts
+                                  ? ts.is_paid
+                                    ? "bg-emerald-100 border-2 border-emerald-300 cursor-pointer"
+                                    : "bg-blue-100 border-2 border-blue-300 cursor-pointer"
+                                  : "hover:bg-gray-100 border border-transparent hover:border-gray-200 cursor-pointer"
                             }`}
                           >
                             {/* Angka tanggal */}
                             <span
                               className={`font-semibold text-sm leading-none ${
-                                ts
-                                  ? ts.is_paid
-                                    ? "text-emerald-700"
-                                    : "text-blue-700"
-                                  : isToday
-                                    ? "text-emerald-600"
-                                    : "text-gray-600"
+                                isOutOfRange
+                                  ? "text-gray-300"
+                                  : ts
+                                    ? ts.is_paid
+                                      ? "text-emerald-700"
+                                      : "text-blue-700"
+                                    : isToday
+                                      ? "text-emerald-600"
+                                      : "text-gray-600"
                               }`}
                             >
                               {d.getDate()}
@@ -557,7 +577,7 @@ function TimesheetModal({ assignment, project, onClose }) {
                             )}
 
                             {/* Hover: edit OT or delete */}
-                            {ts && !ts.is_paid && (
+                            {ts && !ts.is_paid && !isOutOfRange && (
                               <div className="absolute inset-0 bg-white/95 rounded-lg opacity-0 group-hover/cell:opacity-100 flex flex-col items-center justify-center gap-1 transition-all p-1">
                                 <OvertimeEditor ts={ts} onUpdate={refetch} />
                                 <button
@@ -1050,11 +1070,14 @@ function PayrollRunModal({ project, assignments, onClose }) {
   };
 
   const toggleWorker = (wid) => {
-  setWorkerSel(prev => ({
-    ...prev,
-    [String(wid)]: { ...prev[String(wid)], selected: !prev[String(wid)]?.selected },
-  }));
-};
+    setWorkerSel((prev) => ({
+      ...prev,
+      [String(wid)]: {
+        ...prev[String(wid)],
+        selected: !prev[String(wid)]?.selected,
+      },
+    }));
+  };
 
   // Calc pay per worker
   const calcWorkerPay = (wid) => {
@@ -1069,8 +1092,10 @@ function PayrollRunModal({ project, assignments, onClose }) {
     }, 0);
   };
 
-  const selectedWorkers = Object.entries(workerSel).filter(([, v]) => v.selected);
-  
+  const selectedWorkers = Object.entries(workerSel).filter(
+    ([, v]) => v.selected,
+  );
+
   const grandTotal = selectedWorkers.reduce(
     (s, [wid]) => s + calcWorkerPay(wid),
     0,
@@ -2035,11 +2060,314 @@ function TabPayments({
   );
 }
 
+// ─── LumpSumPayModal — untuk Fixed/Borongan ─────────────
+function LumpSumPayModal({ assignment, project, onClose }) {
+  const qc = useQueryClient();
+  const worker = assignment.worker;
+  const rate = parseFloat(assignment.rate_amount) || 0;
+
+  const [form, setForm] = useState({
+    payment_date: "",
+    amount: String(Math.round(rate)),
+    notes: "",
+    payment_method: "cash",
+  });
+  const set = (f, v) => setForm((p) => ({ ...p, [f]: v }));
+
+  const payMutation = useMutation({
+    mutationFn: async () => {
+      if (!form.payment_date) throw new Error("Tanggal bayar required");
+      const amt = parseFloat(parseCurrency(form.amount)) || 0;
+      if (!amt) throw new Error("Jumlah bayar required");
+
+      const wage = await workersApi.createWage({
+        assignment_id: assignment.id,
+        worker_id: assignment.worker_id,
+        project_id: project?.id,
+        payment_date: form.payment_date,
+        rate_snapshot: rate,
+        gross_amount: amt,
+        deduction: 0,
+        net_amount: amt,
+        notes: form.notes || "Pembayaran borongan",
+      });
+
+      await ledgerApi.createExpense({
+        entry_date: form.payment_date,
+        entry_type: "expense",
+        description: `Upah borongan ${worker?.full_name} — ${project?.project_name}`,
+        paid_to: worker?.full_name || "",
+        gross_expense: amt,
+        discount_received: 0,
+        payment_method: form.payment_method,
+        project_id: project?.id || null,
+        notes: form.notes || null,
+      });
+      return wage;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["wages"] });
+      qc.invalidateQueries({ queryKey: ["ledger"] });
+      toast.success("Pembayaran borongan dicatat!");
+      onClose();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  return (
+    <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
+      <div
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-md">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900">
+              💰 Bayar Borongan
+            </h3>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {worker?.full_name} ·{" "}
+              {ROLE_OPTIONS.find((r) => r.value === worker?.role)?.label}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Info rate */}
+          <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs space-y-1">
+            <div className="flex justify-between">
+              <span className="text-gray-500">Rate Borongan</span>
+              <span className="font-semibold">{formatRupiah(rate)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">Project</span>
+              <span className="font-medium">{project?.project_name}</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="Tanggal Bayar *"
+              type="date"
+              value={form.payment_date}
+              onChange={(e) => set("payment_date", e.target.value)}
+            />
+            <CurrencyInput
+              label="Jumlah Dibayar *"
+              value={form.amount}
+              onChange={(v) => set("amount", v)}
+            />
+            <Select
+              label="Metode Bayar"
+              value={form.payment_method}
+              onChange={(e) => set("payment_method", e.target.value)}
+            >
+              {PAYMENT_METHOD_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </Select>
+            <Input
+              label="Catatan"
+              value={form.notes}
+              onChange={(e) => set("notes", e.target.value)}
+              placeholder="optional"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+            <Button type="button" variant="secondary" onClick={onClose}>
+              Batal
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              loading={payMutation.isPending}
+              onClick={() => payMutation.mutate()}
+            >
+              Simpan Pembayaran
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── PerUnitPayModal — untuk Per Unit ───────────────────
+function PerUnitPayModal({ assignment, project, onClose }) {
+  const qc = useQueryClient();
+  const worker = assignment.worker;
+  const rate = parseFloat(assignment.rate_amount) || 0;
+
+  const [form, setForm] = useState({
+    payment_date: "",
+    units: "",
+    notes: "",
+    payment_method: "cash",
+  });
+  const set = (f, v) => setForm((p) => ({ ...p, [f]: v }));
+  const units = parseFloat(form.units) || 0;
+  const total = units * rate;
+
+  const payMutation = useMutation({
+    mutationFn: async () => {
+      if (!form.payment_date) throw new Error("Tanggal bayar required");
+      if (!units) throw new Error("Jumlah unit required");
+
+      const wage = await workersApi.createWage({
+        assignment_id: assignment.id,
+        worker_id: assignment.worker_id,
+        project_id: project?.id,
+        payment_date: form.payment_date,
+        rate_snapshot: rate,
+        gross_amount: total,
+        deduction: 0,
+        net_amount: total,
+        notes: form.notes || `${units} unit`,
+      });
+
+      await ledgerApi.createExpense({
+        entry_date: form.payment_date,
+        entry_type: "expense",
+        description: `Upah per unit ${worker?.full_name} — ${units} unit`,
+        paid_to: worker?.full_name || "",
+        gross_expense: total,
+        discount_received: 0,
+        payment_method: form.payment_method,
+        project_id: project?.id || null,
+        notes: form.notes || null,
+      });
+      return wage;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["wages"] });
+      qc.invalidateQueries({ queryKey: ["ledger"] });
+      toast.success("Pembayaran per unit dicatat!");
+      onClose();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  return (
+    <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
+      <div
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-md">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900">
+              📦 Bayar Per Unit
+            </h3>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {worker?.full_name} ·{" "}
+              {ROLE_OPTIONS.find((r) => r.value === worker?.role)?.label}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Info rate */}
+          <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs">
+            <div className="flex justify-between">
+              <span className="text-gray-500">Rate per Unit</span>
+              <span className="font-semibold">{formatRupiah(rate)}</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="Tanggal Bayar *"
+              type="date"
+              value={form.payment_date}
+              onChange={(e) => set("payment_date", e.target.value)}
+            />
+            <Input
+              label="Jumlah Unit *"
+              type="number"
+              min="0"
+              step="1"
+              value={form.units}
+              onChange={(e) => set("units", e.target.value)}
+              placeholder="0"
+              onWheel={(e) => e.target.blur()}
+            />
+            <Select
+              label="Metode Bayar"
+              value={form.payment_method}
+              onChange={(e) => set("payment_method", e.target.value)}
+            >
+              {PAYMENT_METHOD_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </Select>
+            <Input
+              label="Catatan"
+              value={form.notes}
+              onChange={(e) => set("notes", e.target.value)}
+              placeholder="optional"
+            />
+          </div>
+
+          {/* Preview kalkulasi */}
+          {units > 0 && (
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs space-y-1">
+              <div className="flex justify-between">
+                <span className="text-gray-600">
+                  {units} unit × {formatRupiah(rate)}
+                </span>
+                <span className="font-bold text-emerald-700">
+                  {formatRupiah(total)}
+                </span>
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+            <Button type="button" variant="secondary" onClick={onClose}>
+              Batal
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              loading={payMutation.isPending}
+              disabled={!units || !form.payment_date}
+              onClick={() => payMutation.mutate()}
+            >
+              Simpan — {formatRupiah(total)}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Tab: Workers ────────────────────────────────────────────
 function TabWorkers({ project }) {
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
-  const [timesheetModal, setTimesheetModal] = useState(null);
+  const [timesheetModal, setTimesheetModal] = useState(null); // untuk daily
+  const [lumpSumModal, setLumpSumModal] = useState(null); // untuk fixed
+  const [perUnitModal, setPerUnitModal] = useState(null); // untuk per_unit
   const [payrollOpen, setPayrollOpen] = useState(false);
   const [form, setForm] = useState({
     worker_id: "",
@@ -2079,6 +2407,43 @@ function TabWorkers({ project }) {
     enabled: !!project?.id && allWorkers.length > 0,
   });
 
+  // Tambah di dalam TabWorkers, setelah query assignments
+  const { data: allWages = [], isLoading: wagesLoading } = useQuery({
+    queryKey: ["wages-project", project?.id],
+    queryFn: () => workersApi.getWages({ project_id: project?.id }),
+    enabled: !!project?.id,
+  });
+
+  // Tambah ini untuk debug
+  console.log("allWages:", allWages, "wagesLoading:", wagesLoading);
+
+  // Ambil expense ledger yang terkait project ini sebagai proxy wage history
+  const { data: ledgerEntries = [] } = useQuery({
+    queryKey: ["ledger-project-expense", project?.id],
+    queryFn: () =>
+      ledgerApi.getAll({
+        entry_type: "expense",
+        project_id: project?.id,
+      }),
+    enabled: !!project?.id,
+  });
+
+  // Helper: cari pembayaran per worker dari ledger
+  const getWorkerPayHistory = (workerName) => {
+    const entries = ledgerEntries
+      .filter((e) => e.paid_to === workerName)
+      .sort((a, b) => b.entry_date.localeCompare(a.entry_date));
+    const total = entries.reduce(
+      (s, e) => s + parseFloat(e.net_expense || 0),
+      0,
+    );
+    return {
+      total,
+      count: entries.length,
+      lastDate: entries[0]?.entry_date,
+    };
+  };
+
   const set = (f, v) => setForm((p) => ({ ...p, [f]: v }));
   const assignedIds = assignments.map((a) => a.worker_id);
 
@@ -2086,6 +2451,7 @@ function TabWorkers({ project }) {
     mutationFn: workersApi.createAssignment,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["project-assignments", project?.id] });
+      
       setShowForm(false);
       setForm({
         worker_id: "",
@@ -2174,34 +2540,31 @@ function TabWorkers({ project }) {
                 <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 w-8">
                   #
                 </th>
-                <th className="text-left px-2 py-2.5 text-xs font-medium text-gray-500">
+                <th className="text-left px-2 py-2.5 text-xs font-medium text-gray-500 w-48">
                   Worker
                 </th>
-                <th className="text-left px-2 py-2.5 text-xs font-medium text-gray-500 w-32">
+                <th className="text-left px-2 py-2.5 text-xs font-medium text-gray-500 w-28">
                   Role
                 </th>
-                <th className="text-left px-2 py-2.5 text-xs font-medium text-gray-500 w-28">
+                <th className="text-left px-2 py-2.5 text-xs font-medium text-gray-500 w-24">
                   Tipe Upah
                 </th>
-                <th className="text-right px-2 py-2.5 text-xs font-medium text-gray-500 w-32">
+                <th className="text-right px-2 py-2.5 text-xs font-medium text-gray-500 w-28">
                   Rate
                 </th>
-                <th className="text-left px-2 py-2.5 text-xs font-medium text-gray-500 w-28">
-                  Start Date
+                <th className="text-left px-2 py-2.5 text-xs font-medium text-gray-500 w-24">
+                  Start
                 </th>
-                <th className="text-left px-2 py-2.5 text-xs font-medium text-gray-500 w-28">
-                  End Date
+                <th className="text-left px-2 py-2.5 text-xs font-medium text-gray-500 w-24">
+                  End
                 </th>
-                <th className="text-left px-2 py-2.5 text-xs font-medium text-gray-500 w-20">
+                <th className="text-left px-2 py-2.5 text-xs font-medium text-gray-500 w-16">
                   Status
                 </th>
-                <th className="text-left px-2 py-2.5 text-xs font-medium text-gray-500">
-                  Notes
-                </th>
-                <th className="text-left px-2 py-2.5 text-xs font-medium text-gray-500 w-28">
+                <th className="text-left px-2 py-2.5 text-xs font-medium text-gray-500 w-24">
                   Payment
                 </th>
-                <th className="w-10 px-2 py-2.5"></th>
+                <th className="w-8 px-2 py-2.5"></th>
               </tr>
             </thead>
             <tbody>
@@ -2211,7 +2574,7 @@ function TabWorkers({ project }) {
                   <td className="px-3 py-2 text-center text-xs text-emerald-400">
                     <Plus size={12} />
                   </td>
-                  <td className="px-2 py-1.5">
+                  <td className="px-2 py-1.5 w-48">
                     <select
                       value={form.worker_id}
                       onChange={(e) => set("worker_id", e.target.value)}
@@ -2298,15 +2661,7 @@ function TabWorkers({ project }) {
                   <td className="px-2 py-2 text-xs text-emerald-600 font-medium">
                     Active
                   </td>
-                  <td className="px-2 py-1.5">
-                    <input
-                      type="text"
-                      value={form.notes}
-                      onChange={(e) => set("notes", e.target.value)}
-                      placeholder="optional"
-                      className={inputCls}
-                    />
-                  </td>
+
                   <td className="px-2 py-1.5"></td>
                   <td className="px-2 py-1.5">
                     <div className="flex gap-1">
@@ -2357,7 +2712,7 @@ function TabWorkers({ project }) {
                     <td className="px-3 py-2.5 text-center text-xs text-gray-400">
                       {i + 1}
                     </td>
-                    <td className="px-2 py-2.5">
+                    <td className="px-2 py-2.5 w-48">
                       <div className="flex items-center gap-2">
                         <div className="w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center text-xs font-semibold text-emerald-700 shrink-0">
                           {a.worker?.full_name
@@ -2367,7 +2722,7 @@ function TabWorkers({ project }) {
                             .join("")
                             .toUpperCase()}
                         </div>
-                        <span className="text-sm font-medium text-gray-900">
+                        <span className="text-sm font-medium text-gray-900 truncate">
                           {a.worker?.full_name}
                         </span>
                       </div>
@@ -2393,50 +2748,135 @@ function TabWorkers({ project }) {
                         {a.is_active ? "Active" : "Inactive"}
                       </Badge>
                     </td>
-                    <td className="px-2 py-2.5 text-xs text-gray-400 italic">
-                      {a.notes || "-"}
-                    </td>
                     <td className="px-2 py-2.5">
-                      {/* Single payment button per rate type */}
+                      {/* Per Day */}
                       {a.rate_type === "daily" && (
-                        <button
-                          type="button"
-                          onClick={() => setTimesheetModal(a)}
-                          className="text-xs px-2 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded hover:bg-blue-100 transition-all whitespace-nowrap"
-                        >
-                          📅 Timesheet
-                        </button>
+                        <div className="space-y-1">
+                          <button
+                            type="button"
+                            onClick={() => setTimesheetModal(a)}
+                            className="text-xs px-2 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded hover:bg-blue-100 transition-all whitespace-nowrap"
+                          >
+                            📅 Timesheet
+                          </button>
+                          {(() => {
+                            const s = getWorkerPayHistory(a.worker?.full_name);
+                            return s.lastDate ? (
+                              <div className="text-xs text-gray-400">
+                                Terakhir: {formatDate(s.lastDate)}
+                              </div>
+                            ) : (
+                              <div className="text-xs text-gray-400">
+                                Belum dibayar
+                              </div>
+                            );
+                          })()}
+                        </div>
                       )}
-                      {a.rate_type === "fixed" && (
-                        <button
-                          type="button"
-                          onClick={() => setTimesheetModal(a)}
-                          className="text-xs px-2 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded hover:bg-emerald-100 transition-all whitespace-nowrap"
-                        >
-                          💰 Pay
-                        </button>
-                      )}
+
+                      {/* Fixed */}
+                      {a.rate_type === "fixed" && (() => {
+                        const s       = getWorkerPayHistory(a.worker?.full_name);
+                        const rate    = parseFloat(a.rate_amount || 0);
+                        const pct     = rate > 0 ? Math.min((s.total / rate) * 100, 100) : 0;
+                        const isLunas = pct >= 100;
+                        return (
+                          <div className="space-y-1">
+                            <button
+                              type="button"
+                              onClick={() => { if (!isLunas) setLumpSumModal(a); }}
+                              disabled={isLunas}
+                              title={isLunas ? "Sudah lunas — tidak bisa bayar lagi" : "Bayar"}
+                              className={`text-xs px-2 py-1 border rounded transition-all whitespace-nowrap ${
+                                isLunas
+                                  ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
+                                  : "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 cursor-pointer"
+                              }`}
+                            >
+                              {isLunas ? "✓ Lunas" : "💰 Pay"}
+                            </button>
+                            {s.total > 0 ? (
+                              <div className="text-xs space-y-0.5">
+                                <div className="h-1 bg-gray-200 rounded-full overflow-hidden w-16">
+                                  <div
+                                    className={`h-full rounded-full ${isLunas ? "bg-emerald-500" : "bg-amber-400"}`}
+                                    style={{ width: `${pct}%` }}
+                                  />
+                                </div>
+                                <div className={`text-xs font-medium ${isLunas ? "text-emerald-600" : "text-amber-600"}`}>
+                                  {formatRupiah(s.total)}
+                                  {!isLunas && ` / ${formatRupiah(rate)}`}
+                                  {isLunas && " ✓ Lunas"}
+                                </div>
+                                {s.lastDate && (
+                                  <div className="text-xs text-gray-400">
+                                    Terakhir: {formatDate(s.lastDate)}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="text-xs text-gray-400">Belum dibayar</div>
+                            )}
+                          </div>
+                        );
+                      })()}
+
+                      {/* Per Unit */}
                       {a.rate_type === "per_unit" && (
-                        <button
-                          type="button"
-                          onClick={() => setTimesheetModal(a)}
-                          className="text-xs px-2 py-1 bg-purple-50 text-purple-700 border border-purple-200 rounded hover:bg-purple-100 transition-all whitespace-nowrap"
-                        >
-                          📦 Units
-                        </button>
+                        <div className="space-y-1">
+                          <button
+                            type="button"
+                            onClick={() => setPerUnitModal(a)}
+                            className="text-xs px-2 py-1 bg-purple-50 text-purple-700 border border-purple-200 rounded hover:bg-purple-100 transition-all whitespace-nowrap"
+                          >
+                            📦 Units
+                          </button>
+                          {(() => {
+                            const s = getWorkerPayHistory(a.worker?.full_name);
+                            return s.total > 0 ? (
+                              <div className="text-xs text-gray-500">
+                                {s.count}x bayar · {formatRupiah(s.total)}
+                              </div>
+                            ) : (
+                              <div className="text-xs text-gray-400">
+                                Belum dibayar
+                              </div>
+                            );
+                          })()}
+                        </div>
                       )}
                     </td>
                     <td className="px-2 py-2.5 text-center">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (confirm("Remove this worker from project?"))
-                            deleteAssignment.mutate(a.id);
-                        }}
-                        className="text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
-                      >
-                        <X size={13} />
-                      </button>
+                      {(() => {
+                        const s       = getWorkerPayHistory(a.worker?.full_name);
+                        const hasWage = s.total > 0;
+                        return hasWage ? (
+                          <button
+                            type="button"
+                            title="Tidak bisa dihapus — sudah ada riwayat pembayaran"
+                            onClick={() =>
+                              toast.error(
+                                `Tidak bisa hapus ${a.worker?.full_name} — sudah ada pembayaran ${formatRupiah(s.total)}. Void pembayaran di Wages dulu.`,
+                                { duration: 5000 },
+                              )
+                            }
+                            className="text-gray-200 cursor-not-allowed opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <X size={13} />
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (confirm(`Remove ${a.worker?.full_name} from project?`))
+                                deleteAssignment.mutate(a.id);
+                            }}
+                            className="text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                          >
+                            <X size={13} />
+                          </button>
+                        );
+                      })()}
                     </td>
                   </tr>
                 ))
@@ -2452,6 +2892,20 @@ function TabWorkers({ project }) {
           assignment={timesheetModal}
           project={project}
           onClose={() => setTimesheetModal(null)}
+        />
+      )}
+      {lumpSumModal && (
+        <LumpSumPayModal
+          assignment={lumpSumModal}
+          project={project}
+          onClose={() => setLumpSumModal(null)}
+        />
+      )}
+      {perUnitModal && (
+        <PerUnitPayModal
+          assignment={perUnitModal}
+          project={project}
+          onClose={() => setPerUnitModal(null)}
         />
       )}
       {payrollOpen && (

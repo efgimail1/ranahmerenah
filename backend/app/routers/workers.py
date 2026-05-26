@@ -121,6 +121,18 @@ def get_all_wages(project_id: Optional[int] = None, db: Session = Depends(get_db
         query = query.filter(WagePayment.project_id == project_id)
     return query.order_by(WagePayment.payment_date.desc()).all()
 
+@router.get("/", response_model=List[WagePaymentResponse])
+def get_wages(
+    assignment_id: Optional[int] = None,
+    project_id:    Optional[int] = None,
+    worker_id:     Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    query = db.query(WagePayment)
+    if assignment_id: query = query.filter(WagePayment.assignment_id == assignment_id)
+    if project_id:    query = query.filter(WagePayment.project_id    == project_id)
+    if worker_id:     query = query.filter(WagePayment.worker_id     == worker_id)
+    return query.order_by(WagePayment.payment_date.desc()).all()
 
 @router.post("/wages", response_model=WagePaymentResponse,
              status_code=status.HTTP_201_CREATED)
@@ -130,3 +142,4 @@ def create_wage_payment(payload: WagePaymentCreate, db: Session = Depends(get_db
     db.commit()
     db.refresh(wage)
     return wage
+
