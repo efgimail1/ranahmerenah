@@ -61,23 +61,23 @@ function CatalogForm({ initial, onSubmit, loading }) {
     <form onSubmit={e => { e.preventDefault(); onSubmit(form) }} className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <Input
-          label="Kode Barang"
+          label="Item Code"
           value={form.item_code}
           onChange={e => set('item_code', e.target.value)}
           placeholder="contoh: MAT-001"
         />
         <Select
-          label="Kategori"
+          label="Category"
           value={form.category}
           onChange={e => set('category', e.target.value)}
         >
-          <option value="">-- Pilih Kategori --</option>
+          <option value="">-- Select Category --</option>
           {CATEGORY_OPTIONS.map(c => (
             <option key={c} value={c}>{c}</option>
           ))}
         </Select>
         <Input
-          label="Nama Barang *"
+          label="Item Name *"
           value={form.name}
           onChange={e => set('name', e.target.value)}
           placeholder="contoh: Besi Beton 12mm"
@@ -85,29 +85,29 @@ function CatalogForm({ initial, onSubmit, loading }) {
           required
         />
         <Select
-          label="Satuan Default"
+          label="Default Unit"
           value={form.default_unit}
           onChange={e => set('default_unit', e.target.value)}
         >
           {UNIT_OPTIONS.map(u => <option key={u} value={u}>{u}</option>)}
         </Select>
         <Input
-          label="Deskripsi"
+          label="Description"
           value={form.description}
           onChange={e => set('description', e.target.value)}
           placeholder="spesifikasi detail barang"
         />
         <Input
-          label="Catatan"
+          label="Notes"
           value={form.notes}
           onChange={e => set('notes', e.target.value)}
-          placeholder="opsional"
+          placeholder="optional"
           className="col-span-2"
         />
       </div>
       <div className="flex justify-end pt-2 border-t border-gray-100">
         <Button type="submit" variant="primary" loading={loading}>
-          {initial ? 'Simpan Perubahan' : 'Tambah Barang'}
+          {initial ? 'Save Changes' : 'Add Item'}
         </Button>
       </div>
     </form>
@@ -133,7 +133,7 @@ export default function Catalog() {
     onSuccess: () => {
       invalidate()
       setModalOpen(false)
-      toast.success('Barang ditambahkan ke katalog!')
+      toast.success('Item added to catalog!')
     },
     onError: (err) => toast.error(err.message),
   })
@@ -144,7 +144,7 @@ export default function Catalog() {
       invalidate()
       setModalOpen(false)
       setEditData(null)
-      toast.success('Katalog diupdate!')
+      toast.success('Catalog updated!')
     },
     onError: (err) => toast.error(err.message),
   })
@@ -153,7 +153,7 @@ export default function Catalog() {
     mutationFn: materialsApi.deleteCatalogItem,
     onSuccess: () => {
       invalidate()
-      toast.success('Barang dihapus dari katalog.')
+      toast.success('Item removed from catalog.')
     },
     onError: (err) => toast.error(err.message),
   })
@@ -183,11 +183,11 @@ export default function Catalog() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Katalog Barang</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{catalog.length} barang terdaftar</p>
+          <h1 className="text-xl font-semibold text-gray-900">Item Catalog</h1>
+          <p className="text-sm text-gray-500 mt-0.5">{catalog.length} items registered</p>
         </div>
         <Button variant="primary" onClick={() => { setEditData(null); setModalOpen(true) }}>
-          <Plus size={16} /> Tambah Barang
+          <Plus size={16} /> Add Item
         </Button>
       </div>
 
@@ -198,7 +198,7 @@ export default function Catalog() {
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Cari nama / kode barang..."
+            placeholder="Search by name / item code..."
             className="pl-8 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 w-56"
           />
         </div>
@@ -207,7 +207,7 @@ export default function Catalog() {
           onChange={e => setFilterCategory(e.target.value)}
           className="w-48"
         >
-          <option value="">Semua Kategori</option>
+          <option value="">All Categories</option>
           {CATEGORY_OPTIONS.map(c => (
             <option key={c} value={c}>{c}</option>
           ))}
@@ -224,7 +224,7 @@ export default function Catalog() {
           <div className="text-center py-12">
             <Archive size={32} className="mx-auto text-gray-300 mb-3" />
             <p className="text-sm text-gray-400">
-              {search || filterCategory ? 'Barang tidak ditemukan.' : 'Belum ada barang di katalog.'}
+              {search || filterCategory ? 'Item not found.' : 'No items in catalog.'}
             </p>
           </div>
         </Card>
@@ -242,10 +242,10 @@ export default function Catalog() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-200 bg-gray-50">
-                      <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide w-28">Kode</th>
-                      <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Nama Barang</th>
-                      <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Satuan</th>
-                      <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Deskripsi</th>
+                      <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide w-28">Code</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Name</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Unit</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Description</th>
                       <th className="px-4 py-3 w-20"></th>
                     </tr>
                   </thead>
@@ -277,7 +277,7 @@ export default function Catalog() {
                             </button>
                             <button
                               onClick={() => {
-                                if (confirm('Yakin hapus barang ini dari katalog?'))
+                                if (confirm('Are you sure you want to remove this item from the catalog?'))
                                   deleteMutation.mutate(item.id)
                               }}
                               className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
@@ -299,7 +299,7 @@ export default function Catalog() {
       <Modal
         open={modalOpen}
         onClose={() => { setModalOpen(false); setEditData(null) }}
-        title={editData ? 'Edit Barang' : 'Tambah Barang ke Katalog'}
+        title={editData ? 'Edit Item' : 'Add Item to Catalog'}
       >
         <CatalogForm
           key={editData?.id ?? 'new'}

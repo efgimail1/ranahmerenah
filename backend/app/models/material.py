@@ -41,6 +41,33 @@ class Supplier(Base):
     notes = Column(Text)
 
     purchase_orders = relationship("PurchaseOrder", back_populates="supplier")
+    price_list = relationship("SupplierPriceList", back_populates="supplier", cascade="all, delete")
+
+
+# ─── Supplier Price List ──────────────────────────────────────────────
+class SupplierPriceList(Base):
+    """Daftar harga barang per supplier — untuk perbandingan harga"""
+    __tablename__ = "supplier_price_list"
+
+    id              = Column(Integer, primary_key=True, index=True)
+    supplier_id     = Column(Integer, ForeignKey("suppliers.id"), nullable=False)
+    catalog_item_id = Column(Integer, ForeignKey("item_catalog.id"), nullable=True)
+    item_name       = Column(String(200), nullable=False)
+    unit            = Column(String(30))
+    price           = Column(Numeric(15, 2), nullable=False)
+    effective_date  = Column(Date)
+    notes           = Column(Text)
+
+    supplier     = relationship("Supplier", back_populates="price_list")
+    catalog_item = relationship("ItemCatalog")
+
+
+# Update Supplier — tambah relasi:
+# price_list = relationship("SupplierPriceList", back_populates="supplier")
+
+# Update PurchaseOrder — tambah kolom due_date & payment_link:
+# due_date = Column(Date)
+# linked_ledger_id = Column(Integer, ForeignKey("ledger_entries.id"), nullable=True)
 
 
 # ─── Purchase Order (Header Nota) ─────────────────────────
@@ -57,6 +84,8 @@ class PurchaseOrder(Base):
     receipt_type = Column(Enum(ReceiptType), nullable=True)
     receipt_image_url = Column(String(500), nullable=True)
     notes = Column(Text)
+    due_date         = Column(Date, nullable=True)
+    linked_ledger_id = Column(Integer, nullable=True)
 
     # totals (dihitung dari items)
     total_gross = Column(Numeric(15, 2), default=0)   # total harga bon

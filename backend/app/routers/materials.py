@@ -3,13 +3,15 @@ from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from decimal import Decimal
 from app.database import get_db
-from app.models.material import Material, Supplier, ItemCatalog, PurchaseOrder, PurchaseItem
+from app.models.material import Material, Supplier, ItemCatalog, PurchaseOrder, PurchaseItem,SupplierPriceList
 from app.schemas.material import (
     MaterialCreate, MaterialUpdate, MaterialResponse,
     SupplierCreate, SupplierUpdate, SupplierResponse,
     ItemCatalogCreate, ItemCatalogUpdate, ItemCatalogResponse,
     PurchaseOrderCreate, PurchaseOrderUpdate, PurchaseOrderResponse,
+    SupplierPriceListCreate, SupplierPriceListUpdate, SupplierPriceListResponse
 )
+
 
 router = APIRouter(tags=["Materials"])
 
@@ -108,6 +110,80 @@ def get_supplier_items(supplier_id: int, db: Session = Depends(get_db)):
             })
     return result
 
+
+# ─── Supplier Price List ───────────────────────────────────
+
+@router.get("/suppliers/{supplier_id}/prices",
+            response_model=List[SupplierPriceListResponse])
+def get_supplier_prices(supplier_id: int, db: Session = Depends(get_db)):
+    return db.query(SupplierPriceList).filter(
+        SupplierPriceList.supplier_id == supplier_id
+    ).order_by(SupplierPriceList.item_name).all()
+
+
+@router.post("/suppliers/{supplier_id}/prices",
+             response_model=SupplierPriceListResponse,
+             status_code=status.HTTP_201_CREATED)
+def add_supplier_price(supplier_id: int, payload: SupplierPriceListCreate,
+                       db: Session = Depends(get_db)):
+    price = SupplierPriceList(**payload.dict(), supplier_id=supplier_id)
+    db.add(price)
+    db.commit()
+    db.refresh(price)
+    return price
+
+
+@router.put("/supplier-prices/{price_id}",
+            response_model=SupplierPriceListResponse)
+def update_supplier_price(price_id: int, payload: SupplierPriceListUpdate,
+                          db: Session = Depends(get_db)):
+    price = db.query(SupplierPriceList).filter(SupplierPriceList.id == price_id).first()
+    if not price:
+        raise HTTPException(status_code=404, detail="Price not found")
+    for f, v in payload.dict(exclude_unset=True).items():
+        setattr(price, f, v)
+    db.commit()
+    db.refresh(price)
+    return price
+
+
+@router.delete("/supplier-prices/{price_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_supplier_price(price_id: int, db: Session = Depends(get_db)):
+    price = db.query(SupplierPriceList).filter(SupplierPriceList.id == price_id).first()
+    if not price:
+        raise HTTPException(status_code=404, detail="Price not found")
+    db.delete(price)
+    db.commit()
+
+
+# ─── Price Comparison ─────────────────────────────────────
+@router.get("/prices/compare")
+def compare_prices(item_name: Optional[str] = None,
+                   catalog_item_id: Optional[int] = None,
+                   db: Session = Depends(get_db)):
+    """Bandingkan harga barang yang sama antar supplier"""
+    query = db.query(SupplierPriceList).options(
+        joinedload(SupplierPriceList.supplier)
+    )
+    if item_name:
+        query = query.filter(SupplierPriceList.item_name.ilike(f"%{item_name}%"))
+    if catalog_item_id:
+        query = query.filter(SupplierPriceList.catalog_item_id == catalog_item_id)
+
+    prices = query.order_by(SupplierPriceList.price).all()
+    return [
+        {
+            "id":            p.id,
+            "supplier_id":   p.supplier_id,
+            "supplier_name": p.supplier.store_name,
+            "item_name":     p.item_name,
+            "unit":          p.unit,
+            "price":         p.price,
+            "effective_date":p.effective_date,
+            "notes":         p.notes,
+        }
+        for p in prices
+    ]
 
 # ─── Purchase Orders ───────────────────────────────────────
 def _calc_item(item_data: dict) -> dict:

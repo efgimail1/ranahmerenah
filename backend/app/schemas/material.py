@@ -54,6 +54,30 @@ class SupplierResponse(SupplierBase):
     class Config:
         from_attributes = True
 
+# ─── Supplier Price List ───────────────────────────────────
+class SupplierPriceListBase(BaseModel):
+    supplier_id:     int
+    catalog_item_id: Optional[int] = None
+    item_name:       str
+    unit:            Optional[str] = None
+    price:           Decimal
+    effective_date:  Optional[date] = None
+    notes:           Optional[str] = None
+
+class SupplierPriceListCreate(SupplierPriceListBase):
+    pass
+
+class SupplierPriceListUpdate(BaseModel):
+    item_name:      Optional[str] = None
+    unit:           Optional[str] = None
+    price:          Optional[Decimal] = None
+    effective_date: Optional[date] = None
+    notes:          Optional[str] = None
+
+class SupplierPriceListResponse(SupplierPriceListBase):
+    id: int
+    class Config:
+        from_attributes = True
 
 # ─── Purchase Item ─────────────────────────────────────────
 class PurchaseItemCreate(BaseModel):
@@ -80,6 +104,7 @@ class PurchaseOrderCreate(BaseModel):
     project_id: Optional[int] = None
     supplier_id: Optional[int] = None
     purchase_date: date
+    due_date : Optional[date] = None
     is_paid: Optional[bool] = False
     paid_by: Optional[PaymentBy] = PaymentBy.architect
     has_receipt: Optional[bool] = False
@@ -102,6 +127,7 @@ class PurchaseOrderResponse(BaseModel):
     project_id: Optional[int] = None
     supplier_id: Optional[int] = None
     purchase_date: date
+    due_date: Optional[date] = None
     is_paid: bool
     paid_by: Optional[PaymentBy] = None
     has_receipt: bool
