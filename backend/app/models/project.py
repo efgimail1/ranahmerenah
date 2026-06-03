@@ -24,12 +24,15 @@ class Project(Base):
     rab_value = Column(Numeric(15, 2), default=0)
     architect_fee = Column(Numeric(15, 2), default=0)
     status = Column(Enum(ProjectStatus), default=ProjectStatus.pending)
+    project_type = Column(String(50), default="architect")  # misal: "architect", "interior", dll
     notes = Column(Text)
 
     # relationships
     payments = relationship("ProjectPayment", back_populates="project", cascade="all, delete")
     worker_assignments = relationship("WorkerAssignment", back_populates="project")
     purchase_orders = relationship("PurchaseOrder", back_populates="project")
+    sub_projects = relationship("SubProject", back_populates="project",
+                             cascade="all, delete")
 
 
 class PaymentTermType(str, enum.Enum):

@@ -19,11 +19,14 @@ router = APIRouter(prefix="/projects", tags=["Projects"])
 @router.get("/", response_model=List[ProjectSummary])
 def get_all_projects(
     status: Optional[str] = None,
+    project_type: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     query = db.query(Project).options(joinedload(Project.payments))
     if status:
         query = query.filter(Project.status == status)
+    if project_type:
+        query = query.filter(Project.project_type == project_type)
     projects = query.order_by(Project.received_date.desc()).all()
 
     result = []
@@ -47,6 +50,7 @@ def get_all_projects(
             client_name=p.client_name,
             location=p.location,
             status=p.status,
+            project_type=p.project_type,
             rab_value=p.rab_value or 0,
             architect_fee=architect_fee,
             total_paid=total_paid,
@@ -70,6 +74,7 @@ def create_project(payload: ProjectCreate, db: Session = Depends(get_db)):
         rab_value=payload.rab_value,
         architect_fee=payload.architect_fee,
         status=payload.status,
+        project_type=payload.project_type,
         notes=payload.notes,
     )
     db.add(project)
@@ -110,6 +115,7 @@ def get_project(project_id: int, db: Session = Depends(get_db)):
         "rab_value":         project.rab_value,
         "architect_fee":     project.architect_fee,
         "status":            project.status,
+        "project_type":      project.project_type,
         "notes":             project.notes,
         "total_paid":        total_paid,
         "total_outstanding": outstanding,

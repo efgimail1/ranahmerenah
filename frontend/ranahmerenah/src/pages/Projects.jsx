@@ -4,6 +4,7 @@ import { projectsApi } from "../api/projects";
 import { workersApi } from "../api/workers";
 import { ledgerApi } from "../api/ledger";
 import { timesheetsApi } from "../api/timesheets";
+import { subProjectsApi } from "../api/subProjects";
 import Button from "../components/ui/Button";
 import Badge from "../components/ui/Badge";
 import Card from "../components/ui/Card";
@@ -33,6 +34,10 @@ import {
   TrendingUp,
   Save,
   Users,
+  Layers,
+  Building2,
+  Wallet,
+  ArrowDownCircle,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -93,6 +98,7 @@ function parseHeader(p) {
       rab_value: "",
       architect_fee: "",
       status: "pending",
+      project_type: "architect",
       notes: "",
     };
   return {
@@ -108,6 +114,7 @@ function parseHeader(p) {
       ? String(Math.round(parseFloat(p.architect_fee)))
       : "",
     status: p.status || "pending",
+    project_type: p.project_type || "architect",
     notes: p.notes || "",
   };
 }
@@ -309,6 +316,7 @@ function TimesheetModal({ assignment, project, onClose }) {
         assignment_id: assignment.id,
         worker_id: assignment.worker_id,
         project_id: project?.id,
+        sub_project_id: assignment.sub_project_id || null,
         payment_date: payDate,
         period_start: selectedTs[0]?.work_date,
         period_end: selectedTs[selectedTs.length - 1]?.work_date,
@@ -1130,6 +1138,7 @@ function PayrollRunModal({ project, assignments, onClose }) {
           assignment_id: assignment.id,
           worker_id: parseInt(wid),
           project_id: project?.id,
+          sub_project_id: assignment.sub_project_id || null,
           payment_date: payDate,
           period_start: wTs[0]?.work_date,
           period_end: wTs[wTs.length - 1]?.work_date,
@@ -2084,6 +2093,7 @@ function LumpSumPayModal({ assignment, project, onClose }) {
         assignment_id: assignment.id,
         worker_id: assignment.worker_id,
         project_id: project?.id,
+        sub_project_id: assignment.sub_project_id || null,
         payment_date: form.payment_date,
         rate_snapshot: rate,
         gross_amount: amt,
@@ -2227,6 +2237,7 @@ function PerUnitPayModal({ assignment, project, onClose }) {
         assignment_id: assignment.id,
         worker_id: assignment.worker_id,
         project_id: project?.id,
+        sub_project_id: assignment.sub_project_id || null,
         payment_date: form.payment_date,
         rate_snapshot: rate,
         gross_amount: total,
@@ -2376,6 +2387,7 @@ function TabWorkers({ project }) {
     start_date: "",
     end_date: "",
     notes: "",
+    sub_project_id: "", // ← tambah ini
   });
 
   const { data: allWorkers = [] } = useQuery({
@@ -2451,7 +2463,7 @@ function TabWorkers({ project }) {
     mutationFn: workersApi.createAssignment,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["project-assignments", project?.id] });
-      
+
       setShowForm(false);
       setForm({
         worker_id: "",
@@ -2477,6 +2489,16 @@ function TabWorkers({ project }) {
     onError: (e) => toast.error(e.message),
   });
 
+  // Deteksi apakah project kontraktor
+  const isContractor = project?.project_type === "contractor";
+
+  // Load sub projects kalau kontraktor
+  const { data: subProjects = [] } = useQuery({
+    queryKey: ["sub-projects", project?.id],
+    queryFn: () => subProjectsApi.getByProject(project.id),
+    enabled: !!project?.id && isContractor,
+  });
+
   const handleSubmit = () => {
     if (!form.worker_id) return toast.error("Please select a worker");
     if (!form.rate_amount) return toast.error("Please enter rate amount");
@@ -2488,6 +2510,9 @@ function TabWorkers({ project }) {
       start_date: form.start_date || null,
       end_date: form.end_date || null,
       notes: form.notes || null,
+      sub_project_id: form.sub_project_id
+        ? parseInt(form.sub_project_id)
+        : null, // ← tambah
       is_active: true,
     });
   };
@@ -2546,6 +2571,11 @@ function TabWorkers({ project }) {
                 <th className="text-left px-2 py-2.5 text-xs font-medium text-gray-500 w-28">
                   Role
                 </th>
+                {isContractor && (
+                  <th className="text-left px-2 py-2.5 text-xs font-medium text-gray-500 w-32">
+                    Sub Project
+                  </th>
+                )}
                 <th className="text-left px-2 py-2.5 text-xs font-medium text-gray-500 w-24">
                   Tipe Upah
                 </th>
@@ -2606,6 +2636,22 @@ function TabWorkers({ project }) {
                         )?.label || "-"
                       : "-"}
                   </td>
+                  {isContractor && (
+                    <td className="px-2 py-1.5">
+                      <select
+                        value={form.sub_project_id || ""}
+                        onChange={(e) => set("sub_project_id", e.target.value)}
+                        className={inputCls}
+                      >
+                        <option value="">-- Sub Project --</option>
+                        {subProjects.map((sp) => (
+                          <option key={sp.id} value={sp.id}>
+                            {sp.name}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                  )}
                   <td className="px-2 py-1.5">
                     <select
                       value={form.rate_type}
@@ -2731,6 +2777,12 @@ function TabWorkers({ project }) {
                       {ROLE_OPTIONS.find((r) => r.value === a.worker?.role)
                         ?.label || a.worker?.role}
                     </td>
+                    {isContractor && (
+                      <td className="px-2 py-2.5 text-xs text-gray-500">
+                        {subProjects.find((sp) => sp.id === a.sub_project_id)
+                          ?.name || "-"}
+                      </td>
+                    )}
                     <td className="px-2 py-2.5 text-xs text-gray-500">
                       {RATE_TYPE[a.rate_type]}
                     </td>
@@ -2775,51 +2827,65 @@ function TabWorkers({ project }) {
                       )}
 
                       {/* Fixed */}
-                      {a.rate_type === "fixed" && (() => {
-                        const s       = getWorkerPayHistory(a.worker?.full_name);
-                        const rate    = parseFloat(a.rate_amount || 0);
-                        const pct     = rate > 0 ? Math.min((s.total / rate) * 100, 100) : 0;
-                        const isLunas = pct >= 100;
-                        return (
-                          <div className="space-y-1">
-                            <button
-                              type="button"
-                              onClick={() => { if (!isLunas) setLumpSumModal(a); }}
-                              disabled={isLunas}
-                              title={isLunas ? "Sudah lunas — tidak bisa bayar lagi" : "Bayar"}
-                              className={`text-xs px-2 py-1 border rounded transition-all whitespace-nowrap ${
-                                isLunas
-                                  ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
-                                  : "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 cursor-pointer"
-                              }`}
-                            >
-                              {isLunas ? "✓ Lunas" : "💰 Pay"}
-                            </button>
-                            {s.total > 0 ? (
-                              <div className="text-xs space-y-0.5">
-                                <div className="h-1 bg-gray-200 rounded-full overflow-hidden w-16">
-                                  <div
-                                    className={`h-full rounded-full ${isLunas ? "bg-emerald-500" : "bg-amber-400"}`}
-                                    style={{ width: `${pct}%` }}
-                                  />
-                                </div>
-                                <div className={`text-xs font-medium ${isLunas ? "text-emerald-600" : "text-amber-600"}`}>
-                                  {formatRupiah(s.total)}
-                                  {!isLunas && ` / ${formatRupiah(rate)}`}
-                                  {isLunas && " ✓ Lunas"}
-                                </div>
-                                {s.lastDate && (
-                                  <div className="text-xs text-gray-400">
-                                    Terakhir: {formatDate(s.lastDate)}
+                      {a.rate_type === "fixed" &&
+                        (() => {
+                          const s = getWorkerPayHistory(a.worker?.full_name);
+                          const rate = parseFloat(a.rate_amount || 0);
+                          const pct =
+                            rate > 0
+                              ? Math.min((s.total / rate) * 100, 100)
+                              : 0;
+                          const isLunas = pct >= 100;
+                          return (
+                            <div className="space-y-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (!isLunas) setLumpSumModal(a);
+                                }}
+                                disabled={isLunas}
+                                title={
+                                  isLunas
+                                    ? "Sudah lunas — tidak bisa bayar lagi"
+                                    : "Bayar"
+                                }
+                                className={`text-xs px-2 py-1 border rounded transition-all whitespace-nowrap ${
+                                  isLunas
+                                    ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
+                                    : "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 cursor-pointer"
+                                }`}
+                              >
+                                {isLunas ? "✓ Lunas" : "💰 Pay"}
+                              </button>
+                              {s.total > 0 ? (
+                                <div className="text-xs space-y-0.5">
+                                  <div className="h-1 bg-gray-200 rounded-full overflow-hidden w-16">
+                                    <div
+                                      className={`h-full rounded-full ${isLunas ? "bg-emerald-500" : "bg-amber-400"}`}
+                                      style={{ width: `${pct}%` }}
+                                    />
                                   </div>
-                                )}
-                              </div>
-                            ) : (
-                              <div className="text-xs text-gray-400">Belum dibayar</div>
-                            )}
-                          </div>
-                        );
-                      })()}
+                                  <div
+                                    className={`text-xs font-medium ${isLunas ? "text-emerald-600" : "text-amber-600"}`}
+                                  >
+                                    {formatRupiah(s.total)}
+                                    {!isLunas && ` / ${formatRupiah(rate)}`}
+                                    {isLunas && " ✓ Lunas"}
+                                  </div>
+                                  {s.lastDate && (
+                                    <div className="text-xs text-gray-400">
+                                      Terakhir: {formatDate(s.lastDate)}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="text-xs text-gray-400">
+                                  Belum dibayar
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
 
                       {/* Per Unit */}
                       {a.rate_type === "per_unit" && (
@@ -2848,7 +2914,7 @@ function TabWorkers({ project }) {
                     </td>
                     <td className="px-2 py-2.5 text-center">
                       {(() => {
-                        const s       = getWorkerPayHistory(a.worker?.full_name);
+                        const s = getWorkerPayHistory(a.worker?.full_name);
                         const hasWage = s.total > 0;
                         return hasWage ? (
                           <button
@@ -2868,7 +2934,11 @@ function TabWorkers({ project }) {
                           <button
                             type="button"
                             onClick={() => {
-                              if (confirm(`Remove ${a.worker?.full_name} from project?`))
+                              if (
+                                confirm(
+                                  `Remove ${a.worker?.full_name} from project?`,
+                                )
+                              )
                                 deleteAssignment.mutate(a.id);
                             }}
                             className="text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
@@ -2919,16 +2989,1300 @@ function TabWorkers({ project }) {
   );
 }
 
+// ─── ContractorHeaderStats ──────────────────────────────────
+function ContractorHeaderStats({ projectId }) {
+  const { data: subProjects = [] } = useQuery({
+    queryKey: ["sub-projects", projectId],
+    queryFn: () => subProjectsApi.getByProject(projectId),
+    enabled: !!projectId,
+  });
+
+  const totalRab = subProjects.reduce(
+    (s, sp) => s + parseFloat(sp.rab_value || 0),
+    0,
+  );
+  const totalMasuk = subProjects.reduce(
+    (s, sp) => s + (sp.summary?.total_billings || 0),
+    0,
+  );
+  const totalSpent = subProjects.reduce(
+    (s, sp) => s + (sp.summary?.total_spent || 0),
+    0,
+  );
+  const totalKas = subProjects.reduce(
+    (s, sp) => s + (sp.summary?.cash_available || 0),
+    0,
+  );
+
+  return (
+    <div className="flex items-center gap-5 text-xs">
+      <div className="text-right">
+        <div className="text-gray-400 font-medium uppercase tracking-wide">
+          Total RAB
+        </div>
+        <div className="font-bold text-gray-700">{formatRupiah(totalRab)}</div>
+      </div>
+      <div className="text-right">
+        <div className="text-gray-400 font-medium uppercase tracking-wide">
+          Masuk
+        </div>
+        <div className="font-bold text-blue-600">
+          {formatRupiah(totalMasuk)}
+        </div>
+      </div>
+      <div className="text-right">
+        <div className="text-gray-400 font-medium uppercase tracking-wide">
+          Spent
+        </div>
+        <div className="font-bold text-red-500">{formatRupiah(totalSpent)}</div>
+      </div>
+      <div className="text-right">
+        <div className="text-gray-400 font-medium uppercase tracking-wide">
+          Kas
+        </div>
+        <div
+          className={`font-bold ${totalKas >= 0 ? "text-emerald-600" : "text-orange-600"}`}
+        >
+          {formatRupiah(totalKas)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── SubProjectWorkers ──────────────────────────────────────
+function SubProjectWorkers({ subProject, project }) {
+  const { data: allWorkers = [] } = useQuery({
+    queryKey: ["workers"],
+    queryFn: () => workersApi.getAll({}),
+  });
+
+  // Fetch semua assignments project ini, filter yang sub_project_id = subProject.id
+  const { data: allAssignments = [], isLoading } = useQuery({
+    queryKey: ["project-assignments-all", project?.id],
+    queryFn: async () => {
+      if (!project?.id || !allWorkers.length) return [];
+      const result = [];
+      for (const w of allWorkers) {
+        try {
+          const assigns = await workersApi.getAssignments(w.id);
+          assigns
+            .filter((a) => a.project_id === project.id)
+            .forEach((a) => result.push({ ...a, worker: w }));
+        } catch {
+          /* ignore */
+        }
+      }
+      return result;
+    },
+    enabled: !!project?.id && allWorkers.length > 0,
+  });
+
+  const ROLE_OPTIONS_MAP = {
+    foreman: "Mandor",
+    carpenter: "Tukang Kayu",
+    helper: "Kenek",
+    furniture_maker: "Tukang Meubel",
+    bricklayer: "Tukang Batu",
+    painter: "Tukang Cat",
+    electrician: "Elektrisi",
+    plumber: "Tukang Ledeng",
+    other: "Lainnya",
+  };
+
+  // Filter assignments untuk sub project ini
+  const assignments = allAssignments.filter(
+    (a) => a.sub_project_id === subProject?.id,
+  );
+
+  if (isLoading)
+    return (
+      <div className="flex justify-center py-8">
+        <div className="animate-spin rounded-full h-5 w-5 border-2 border-emerald-600 border-t-transparent" />
+      </div>
+    );
+
+  if (assignments.length === 0)
+    return (
+      <div className="text-center py-8 border border-dashed border-gray-200 rounded-xl">
+        <HardHat size={24} className="mx-auto text-gray-300 mb-2" />
+        <p className="text-sm text-gray-400">
+          Belum ada worker di sub project ini.
+        </p>
+        <p className="text-xs text-gray-300 mt-1">
+          Assign worker di Tab Workers project, pilih sub project ini.
+        </p>
+      </div>
+    );
+
+  return (
+    <div className="space-y-3">
+      {/* Summary */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
+          <div className="text-lg font-bold text-blue-700">
+            {assignments.length}
+          </div>
+          <div className="text-xs text-blue-600">Total Workers</div>
+        </div>
+        <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-center">
+          <div className="text-lg font-bold text-emerald-700">
+            {assignments.filter((a) => a.is_active).length}
+          </div>
+          <div className="text-xs text-emerald-600">Active</div>
+        </div>
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-center">
+          <div className="text-sm font-bold text-gray-700">
+            {[...new Set(assignments.map((a) => a.rate_type))].join(", ")}
+          </div>
+          <div className="text-xs text-gray-500">Tipe Upah</div>
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="border border-gray-200 rounded-xl overflow-hidden">
+        <table className="w-full text-xs">
+          <thead className="bg-gray-50 border-b border-gray-200">
+            <tr>
+              <th className="text-left px-3 py-2.5 font-medium text-gray-500 w-8">
+                #
+              </th>
+              <th className="text-left px-3 py-2.5 font-medium text-gray-500">
+                Worker
+              </th>
+              <th className="text-left px-3 py-2.5 font-medium text-gray-500 w-28">
+                Role
+              </th>
+              <th className="text-left px-3 py-2.5 font-medium text-gray-500 w-24">
+                Tipe Upah
+              </th>
+              <th className="text-right px-3 py-2.5 font-medium text-gray-500 w-28">
+                Rate
+              </th>
+              <th className="text-left px-3 py-2.5 font-medium text-gray-500 w-24">
+                Mulai
+              </th>
+              <th className="text-left px-3 py-2.5 font-medium text-gray-500 w-24">
+                Selesai
+              </th>
+              <th className="text-left px-3 py-2.5 font-medium text-gray-500 w-16">
+                Status
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {assignments.map((a, i) => (
+              <tr key={a.id} className="hover:bg-gray-50">
+                <td className="px-3 py-2.5 text-center text-gray-400">
+                  {i + 1}
+                </td>
+                <td className="px-3 py-2.5">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center text-xs font-semibold text-emerald-700 shrink-0">
+                      {a.worker?.full_name
+                        ?.split(" ")
+                        .slice(0, 2)
+                        .map((n) => n[0])
+                        .join("")
+                        .toUpperCase()}
+                    </div>
+                    <span className="font-medium text-gray-900">
+                      {a.worker?.full_name}
+                    </span>
+                  </div>
+                </td>
+                <td className="px-3 py-2.5 text-gray-500">
+                  {ROLE_OPTIONS_MAP[a.worker?.role] || a.worker?.role}
+                </td>
+                <td className="px-3 py-2.5 text-gray-500">
+                  {a.rate_type === "daily"
+                    ? "Per Hari"
+                    : a.rate_type === "per_unit"
+                      ? "Per Unit"
+                      : "Borongan"}
+                </td>
+                <td className="px-3 py-2.5 text-right font-semibold text-gray-900">
+                  {formatRupiah(a.rate_amount)}
+                </td>
+                <td className="px-3 py-2.5 text-gray-400">
+                  {a.start_date ? formatDate(a.start_date) : "-"}
+                </td>
+                <td className="px-3 py-2.5 text-gray-400">
+                  {a.end_date ? formatDate(a.end_date) : "-"}
+                </td>
+                <td className="px-3 py-2.5">
+                  <Badge color={a.is_active ? "green" : "gray"}>
+                    {a.is_active ? "Active" : "Inactive"}
+                  </Badge>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ─── SubProjectDetail Modal ─────────────────────────────────
+function SubProjectDetail({ subProject, project, open, onClose, onUpdated }) {
+  const [activeTab, setActiveTab] = useState("billings");
+  const [billingForm, setBillingForm] = useState({
+    billing_date: "",
+    amount: "",
+    received_from: "",
+    bank_account: "",
+    payment_method: "transfer",
+    notes: "",
+  });
+  const setB = (f, v) => setBillingForm((p) => ({ ...p, [f]: v }));
+
+  const { data: sp, refetch } = useQuery({
+    queryKey: ["sub-project", subProject?.id],
+    queryFn: () => subProjectsApi.getById(subProject.id),
+    enabled: !!subProject?.id && open,
+  });
+
+  const data = sp || subProject;
+  const summary = data?.summary || {};
+  const rab = parseFloat(data?.rab_value || 0);
+
+  const BANK_OPTIONS_LIST = [
+    "BCA",
+    "Blu",
+    "Jago",
+    "Mandiri",
+    "BNI",
+    "BRI",
+    "BSI",
+    "Other",
+  ];
+  const PM_OPTIONS = [
+    { value: "transfer", label: "Bank Transfer" },
+    { value: "cash", label: "Cash" },
+    { value: "qris", label: "QRIS" },
+  ];
+
+  const createBilling = useMutation({
+    mutationFn: (d) => subProjectsApi.createBilling(data.id, d),
+    onSuccess: () => {
+      refetch();
+      if (onUpdated) onUpdated();
+      setBillingForm({
+        billing_date: "",
+        amount: "",
+        received_from: "",
+        bank_account: "",
+        payment_method: "transfer",
+        notes: "",
+      });
+      toast.success("Transfer masuk dicatat!");
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const deleteBilling = useMutation({
+    mutationFn: (bid) => subProjectsApi.deleteBilling(data.id, bid),
+    onSuccess: () => {
+      refetch();
+      if (onUpdated) onUpdated();
+      toast.success("Dihapus.");
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const handleBillingSubmit = () => {
+    const amt = parseFloat(parseCurrency(billingForm.amount)) || 0;
+    if (!billingForm.billing_date) return toast.error("Tanggal required");
+    if (!amt) return toast.error("Jumlah required");
+    createBilling.mutate({
+      billing_date: billingForm.billing_date,
+      amount: amt,
+      received_from: billingForm.received_from || null,
+      bank_account: billingForm.bank_account || null,
+      payment_method: billingForm.payment_method,
+      notes: billingForm.notes || null,
+    });
+  };
+
+  if (!open || !data) return null;
+
+  const billings = data.billings || [];
+
+  // Cost bar percentages
+  const pctWorkers =
+    rab > 0 ? Math.min((summary.total_workers / rab) * 100, 100) : 0;
+  const pctPO = rab > 0 ? Math.min((summary.total_po / rab) * 100, 100) : 0;
+  const pctBilled =
+    rab > 0 ? Math.min((summary.total_billings / rab) * 100, 100) : 0;
+
+  return (
+    <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
+      <div
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 shrink-0">
+          <div>
+            <div className="flex items-center gap-2">
+              <Building2 size={16} className="text-emerald-600" />
+              <h3 className="text-sm font-semibold text-gray-900">
+                {data.name}
+              </h3>
+              <Badge
+                color={
+                  data.status === "completed"
+                    ? "green"
+                    : data.status === "on_hold"
+                      ? "amber"
+                      : "blue"
+                }
+              >
+                {data.status}
+              </Badge>
+            </div>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {project?.project_name} · RAB: {formatRupiah(rab)}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Summary cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 border-b border-gray-100 shrink-0">
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-center">
+            <div className="text-xs text-blue-500 mb-1">Transfer Masuk</div>
+            <div className="text-sm font-bold text-blue-700">
+              {formatRupiah(summary.total_billings || 0)}
+            </div>
+          </div>
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-center">
+            <div className="text-xs text-amber-500 mb-1">Outstanding</div>
+            <div className="text-sm font-bold text-amber-700">
+              {formatRupiah(summary.outstanding || 0)}
+            </div>
+          </div>
+          <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-center">
+            <div className="text-xs text-red-500 mb-1">Total Spent</div>
+            <div className="text-sm font-bold text-red-600">
+              {formatRupiah(summary.total_spent || 0)}
+            </div>
+          </div>
+          <div
+            className={`border rounded-xl p-3 text-center ${(summary.cash_available || 0) >= 0 ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}
+          >
+            <div
+              className={`text-xs mb-1 ${(summary.cash_available || 0) >= 0 ? "text-emerald-500" : "text-red-500"}`}
+            >
+              Kas Tersedia
+            </div>
+            <div
+              className={`text-sm font-bold ${(summary.cash_available || 0) >= 0 ? "text-emerald-700" : "text-red-600"}`}
+            >
+              {formatRupiah(summary.cash_available || 0)}
+            </div>
+          </div>
+        </div>
+
+        {/* Cost breakdown bar */}
+        <div className="px-4 pb-3 border-b border-gray-100 shrink-0">
+          <div className="flex justify-between text-xs text-gray-500 mb-1">
+            <span>RAB Usage</span>
+            <span>
+              {formatRupiah(summary.total_spent || 0)} / {formatRupiah(rab)}
+            </span>
+          </div>
+          <div className="h-3 bg-gray-100 rounded-full overflow-hidden flex">
+            <div
+              className="h-full bg-blue-400 transition-all"
+              style={{ width: `${pctWorkers}%` }}
+              title={`Workers: ${formatRupiah(summary.total_workers || 0)}`}
+            />
+            <div
+              className="h-full bg-orange-400 transition-all"
+              style={{ width: `${pctPO}%` }}
+              title={`PO: ${formatRupiah(summary.total_po || 0)}`}
+            />
+          </div>
+          <div className="flex gap-4 mt-1 text-xs">
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 bg-blue-400 rounded-full inline-block" />
+              Workers: {formatRupiah(summary.total_workers || 0)}
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 bg-orange-400 rounded-full inline-block" />
+              Purchase Orders: {formatRupiah(summary.total_po || 0)}
+            </span>
+          </div>
+
+          {/* Billing bar */}
+          <div className="h-2 bg-gray-100 rounded-full overflow-hidden mt-2">
+            <div
+              className="h-full bg-emerald-400 transition-all"
+              style={{ width: `${pctBilled}%` }}
+            />
+          </div>
+          <div className="text-xs text-gray-400 mt-0.5">
+            Transfer masuk: {formatRupiah(summary.total_billings || 0)} (
+            {Math.round(pctBilled)}% dari RAB)
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex border-b border-gray-200 bg-white shrink-0">
+          {[
+            { id: "billings", label: "Transfer Masuk", icon: ArrowDownCircle },
+            { id: "workers", label: "Workers", icon: HardHat },
+            { id: "po", label: "Purchase Orders", icon: Wallet },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium border-b-2 transition-all ${
+                activeTab === tab.id
+                  ? "border-emerald-600 text-emerald-700"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+              }`}
+            >
+              <tab.icon size={13} />
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="overflow-y-auto flex-1 p-4">
+          {/* ── BILLINGS TAB ── */}
+          {activeTab === "billings" && (
+            <div className="space-y-4">
+              {/* Add billing form */}
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-3">
+                <h4 className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">
+                  Tambah Transfer Masuk
+                </h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <Input
+                    label="Tanggal *"
+                    type="date"
+                    value={billingForm.billing_date}
+                    onChange={(e) => setB("billing_date", e.target.value)}
+                  />
+                  <CurrencyInput
+                    label="Jumlah *"
+                    value={billingForm.amount}
+                    onChange={(v) => setB("amount", v)}
+                    placeholder="0"
+                  />
+                  <Input
+                    label="Dari (Owner/Klien)"
+                    value={billingForm.received_from}
+                    onChange={(e) => setB("received_from", e.target.value)}
+                    placeholder="Nama owner / klien"
+                  />
+                  <Select
+                    label="Bank"
+                    value={billingForm.bank_account}
+                    onChange={(e) => setB("bank_account", e.target.value)}
+                  >
+                    <option value="">-- Select Bank --</option>
+                    {BANK_OPTIONS_LIST.map((b) => (
+                      <option key={b} value={b}>
+                        {b}
+                      </option>
+                    ))}
+                  </Select>
+                  <Select
+                    label="Metode"
+                    value={billingForm.payment_method}
+                    onChange={(e) => setB("payment_method", e.target.value)}
+                  >
+                    {PM_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </Select>
+                  <Input
+                    label="Catatan"
+                    value={billingForm.notes}
+                    onChange={(e) => setB("notes", e.target.value)}
+                    placeholder="optional"
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  loading={createBilling.isPending}
+                  onClick={handleBillingSubmit}
+                >
+                  + Tambah Transfer
+                </Button>
+              </div>
+
+              {/* Billing list */}
+              {billings.length === 0 ? (
+                <div className="text-center py-8 border border-dashed border-gray-200 rounded-xl">
+                  <ArrowDownCircle
+                    size={24}
+                    className="mx-auto text-gray-300 mb-2"
+                  />
+                  <p className="text-sm text-gray-400">
+                    Belum ada transfer masuk.
+                  </p>
+                </div>
+              ) : (
+                <div className="border border-gray-200 rounded-xl overflow-hidden">
+                  <table className="w-full text-xs">
+                    <thead className="bg-gray-50 border-b border-gray-200">
+                      <tr>
+                        <th className="text-left px-3 py-2.5 font-medium text-gray-500">
+                          Tanggal
+                        </th>
+                        <th className="text-left px-3 py-2.5 font-medium text-gray-500">
+                          Dari
+                        </th>
+                        <th className="text-left px-3 py-2.5 font-medium text-gray-500">
+                          Bank
+                        </th>
+                        <th className="text-right px-3 py-2.5 font-medium text-gray-500">
+                          Jumlah
+                        </th>
+                        <th className="w-10 px-3 py-2.5"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {billings
+                        .sort((a, b) =>
+                          b.billing_date.localeCompare(a.billing_date),
+                        )
+                        .map((b) => (
+                          <tr key={b.id} className="hover:bg-gray-50 group">
+                            <td className="px-3 py-2.5 text-gray-700">
+                              {formatDate(b.billing_date)}
+                            </td>
+                            <td className="px-3 py-2.5 text-gray-600">
+                              {b.received_from || "-"}
+                            </td>
+                            <td className="px-3 py-2.5">
+                              {b.bank_account ? (
+                                <span className="bg-gray-100 text-gray-700 rounded px-1.5 py-0.5">
+                                  {b.bank_account}
+                                </span>
+                              ) : (
+                                <span className="text-gray-300">-</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-semibold text-emerald-700">
+                              {formatRupiah(b.amount)}
+                            </td>
+                            <td className="px-3 py-2.5 text-center">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (confirm("Hapus transfer ini?"))
+                                    deleteBilling.mutate(b.id);
+                                }}
+                                className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                              >
+                                <X size={13} />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-emerald-50 border-t-2 border-emerald-200">
+                        <td
+                          colSpan={3}
+                          className="px-3 py-2.5 text-xs font-semibold text-emerald-700"
+                        >
+                          Total ({billings.length} transfer)
+                        </td>
+                        <td className="px-3 py-2.5 text-right font-bold text-emerald-700">
+                          {formatRupiah(
+                            billings.reduce(
+                              (s, b) => s + parseFloat(b.amount || 0),
+                              0,
+                            ),
+                          )}
+                        </td>
+                        <td />
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── WORKERS TAB ── */}
+          {activeTab === "workers" && (
+            <SubProjectWorkers subProject={data} project={project} />
+          )}
+
+          {/* ── PURCHASE ORDERS TAB ── */}
+          {activeTab === "po" && (
+            <div className="text-center py-8 text-gray-400 text-sm">
+              <Wallet size={24} className="mx-auto text-gray-300 mb-2" />
+              Purchase Orders per sub project akan tersedia di modul Materials.
+              <br />
+              <span className="text-xs text-gray-300 mt-1 block">
+                (Filter PO berdasarkan sub project — coming soon)
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── TabSubProjects ──────────────────────────────────────────
+function TabSubProjects({ project }) {
+  const qc = useQueryClient();
+  const [showForm, setShowForm] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [selectedSP, setSelectedSP] = useState(null);
+  const [editingSP, setEditingSP] = useState(null);
+  const [form, setForm] = useState({
+    name: "",
+    description: "",
+    rab_value: "",
+    status: "active",
+    start_date: "",
+    end_date: "",
+  });
+  const setF = (f, v) => setForm((p) => ({ ...p, [f]: v }));
+
+  const {
+    data: subProjects = [],
+    refetch,
+    isLoading,
+  } = useQuery({
+    queryKey: ["sub-projects", project?.id],
+    queryFn: () => subProjectsApi.getByProject(project.id),
+    enabled: !!project?.id,
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (d) => subProjectsApi.create({ ...d, project_id: project.id }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["sub-projects", project?.id] });
+      setShowForm(false);
+      setForm({
+        name: "",
+        description: "",
+        rab_value: "",
+        status: "active",
+        start_date: "",
+        end_date: "",
+      });
+      toast.success("Sub project dibuat!");
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }) => subProjectsApi.update(id, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["sub-projects", project?.id] });
+      setEditingSP(null);
+      toast.success("Sub project diupdate!");
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id) => subProjectsApi.delete(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["sub-projects", project?.id] });
+      toast.success("Sub project dihapus.");
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  // GANTI DENGAN:
+  const handleCreate = () => {
+    if (!form.name) return toast.error("Nama sub project required");
+    createMutation.mutate({
+      name: form.name,
+      description: form.description || null,
+      rab_value: parseFloat(parseCurrency(form.rab_value)) || 0,
+      status: form.status,
+      start_date: form.start_date || null,
+      end_date: form.end_date || null,
+    });
+  };
+
+  // Grand total summary
+  const grandRab = subProjects.reduce(
+    (s, sp) => s + parseFloat(sp.rab_value || 0),
+    0,
+  );
+  const grandBilled = subProjects.reduce(
+    (s, sp) => s + (sp.summary?.total_billings || 0),
+    0,
+  );
+  const grandSpent = subProjects.reduce(
+    (s, sp) => s + (sp.summary?.total_spent || 0),
+    0,
+  );
+  const grandCash = subProjects.reduce(
+    (s, sp) => s + (sp.summary?.cash_available || 0),
+    0,
+  );
+
+  if (!project?.id)
+    return (
+      <div className="p-8 text-center text-gray-400 text-sm">
+        Save the project first.
+      </div>
+    );
+
+  return (
+    <div className="p-5 space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-widest">
+          Sub Projects ({subProjects.length})
+        </h4>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => setShowForm((s) => !s)}
+        >
+          <Plus size={14} /> Tambah Sub Project
+        </Button>
+      </div>
+
+      {/* Grand summary */}
+      {subProjects.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 text-center">
+            <div className="text-xs text-gray-400 mb-1">Total RAB</div>
+            <div className="text-sm font-bold text-gray-800">
+              {formatRupiah(grandRab)}
+            </div>
+          </div>
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-center">
+            <div className="text-xs text-blue-400 mb-1">Total Masuk</div>
+            <div className="text-sm font-bold text-blue-700">
+              {formatRupiah(grandBilled)}
+            </div>
+          </div>
+          <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-center">
+            <div className="text-xs text-red-400 mb-1">Total Spent</div>
+            <div className="text-sm font-bold text-red-600">
+              {formatRupiah(grandSpent)}
+            </div>
+          </div>
+          <div
+            className={`border rounded-xl p-3 text-center ${grandCash >= 0 ? "bg-emerald-50 border-emerald-200" : "bg-orange-50 border-orange-200"}`}
+          >
+            <div
+              className={`text-xs mb-1 ${grandCash >= 0 ? "text-emerald-400" : "text-orange-400"}`}
+            >
+              Total Kas
+            </div>
+            <div
+              className={`text-sm font-bold ${grandCash >= 0 ? "text-emerald-700" : "text-orange-700"}`}
+            >
+              {formatRupiah(grandCash)}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Table */}
+      <div className="border border-gray-200 rounded-xl overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-200">
+                <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 w-8">
+                  #
+                </th>
+                <th className="text-left px-2 py-2.5 text-xs font-medium text-gray-500">
+                  Nama Sub Project
+                </th>
+                <th className="text-left px-2 py-2.5 text-xs font-medium text-gray-500 w-20">
+                  Status
+                </th>
+                <th className="text-right px-2 py-2.5 text-xs font-medium text-gray-500 w-32">
+                  RAB
+                </th>
+                <th className="text-left px-2 py-2.5 text-xs font-medium text-gray-500 w-28">
+                  Mulai
+                </th>
+                <th className="text-left px-2 py-2.5 text-xs font-medium text-gray-500 w-28">
+                  Selesai
+                </th>
+                <th className="text-right px-2 py-2.5 text-xs font-medium text-gray-500 w-32">
+                  Masuk
+                </th>
+                <th className="text-right px-2 py-2.5 text-xs font-medium text-gray-500 w-32">
+                  Spent
+                </th>
+                <th className="text-right px-2 py-2.5 text-xs font-medium text-gray-500 w-32">
+                  Kas
+                </th>
+                <th className="text-left px-2 py-2.5 text-xs font-medium text-gray-500 w-28">
+                  RAB Usage
+                </th>
+                <th className="w-24 px-2 py-2.5"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {/* Add row form */}
+              {showForm && (
+                <tr className="bg-emerald-50 border-b border-emerald-200">
+                  <td className="px-3 py-2 text-center text-xs text-emerald-400">
+                    <Plus size={12} />
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <input
+                      type="text"
+                      value={form.name}
+                      onChange={(e) => setF("name", e.target.value)}
+                      placeholder="Nama sub project *"
+                      className="w-full text-xs border border-gray-200 rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    />
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <select
+                      value={form.status}
+                      onChange={(e) => setF("status", e.target.value)}
+                      className="w-full text-xs border border-gray-200 rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    >
+                      <option value="active">Active</option>
+                      <option value="completed">Completed</option>
+                      <option value="on_hold">On Hold</option>
+                    </select>
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <div className="relative">
+                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
+                        Rp
+                      </span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={
+                          form.rab_value
+                            ? new Intl.NumberFormat("id-ID").format(
+                                parseCurrency(form.rab_value),
+                              )
+                            : ""
+                        }
+                        onChange={(e) =>
+                          setF("rab_value", e.target.value.replace(/\D/g, ""))
+                        }
+                        placeholder="0"
+                        className="w-full text-xs border border-gray-200 rounded pl-7 pr-2 py-1.5 bg-white text-right focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      />
+                    </div>
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <input
+                      type="date"
+                      value={form.start_date}
+                      onChange={(e) => setF("start_date", e.target.value)}
+                      className="w-full text-xs border border-gray-200 rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    />
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <input
+                      type="date"
+                      value={form.end_date}
+                      onChange={(e) => setF("end_date", e.target.value)}
+                      className="w-full text-xs border border-gray-200 rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    />
+                  </td>
+                  <td
+                    colSpan={3}
+                    className="px-2 py-2 text-xs text-gray-400 italic"
+                  >
+                    —
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <input
+                      type="text"
+                      value={form.description}
+                      onChange={(e) => setF("description", e.target.value)}
+                      placeholder="deskripsi (optional)"
+                      className="w-full text-xs border border-gray-200 rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    />
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        onClick={handleCreate}
+                        disabled={createMutation.isPending}
+                        className="p-1 text-emerald-600 hover:bg-emerald-100 rounded transition-all"
+                        title="Save"
+                      >
+                        {createMutation.isPending ? (
+                          <div className="animate-spin rounded-full h-3 w-3 border-2 border-emerald-600 border-t-transparent" />
+                        ) : (
+                          <Save size={13} />
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowForm(false)}
+                        className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-all"
+                        title="Cancel"
+                      >
+                        <X size={13} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              )}
+
+              {/* Loading */}
+              {isLoading ? (
+                <tr>
+                  <td colSpan={11} className="text-center py-6">
+                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-emerald-600 border-t-transparent mx-auto" />
+                  </td>
+                </tr>
+              ) : subProjects.length === 0 && !showForm ? (
+                <tr>
+                  <td
+                    colSpan={11}
+                    className="text-center py-8 text-gray-400 text-sm"
+                  >
+                    <Layers size={24} className="mx-auto text-gray-300 mb-2" />
+                    Belum ada sub project. Klik "+ Tambah Sub Project".
+                  </td>
+                </tr>
+              ) : (
+                subProjects.map((sp, i) => {
+                  const s = sp.summary || {};
+                  const rab = parseFloat(sp.rab_value || 0);
+                  const pct =
+                    rab > 0
+                      ? Math.min(((s.total_spent || 0) / rab) * 100, 100)
+                      : 0;
+                  const isEditing = editingSP?.id === sp.id;
+
+                  if (isEditing) {
+                    return (
+                      <tr
+                        key={sp.id}
+                        className="bg-blue-50 border-b border-blue-200"
+                      >
+                        <td className="px-3 py-2 text-center text-xs text-blue-400">
+                          {i + 1}
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input
+                            type="text"
+                            value={editingSP.name}
+                            onChange={(e) =>
+                              setEditingSP((p) => ({
+                                ...p,
+                                name: e.target.value,
+                              }))
+                            }
+                            className="w-full text-xs border border-gray-200 rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                          />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <select
+                            value={editingSP.status}
+                            onChange={(e) =>
+                              setEditingSP((p) => ({
+                                ...p,
+                                status: e.target.value,
+                              }))
+                            }
+                            className="w-full text-xs border border-gray-200 rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                          >
+                            <option value="active">Active</option>
+                            <option value="completed">Completed</option>
+                            <option value="on_hold">On Hold</option>
+                          </select>
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <div className="relative">
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
+                              Rp
+                            </span>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={
+                                editingSP.rab_value
+                                  ? new Intl.NumberFormat("id-ID").format(
+                                      parseCurrency(
+                                        String(editingSP.rab_value),
+                                      ),
+                                    )
+                                  : ""
+                              }
+                              onChange={(e) =>
+                                setEditingSP((p) => ({
+                                  ...p,
+                                  rab_value: e.target.value.replace(/\D/g, ""),
+                                }))
+                              }
+                              className="w-full text-xs border border-gray-200 rounded pl-7 pr-2 py-1.5 bg-white text-right focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                            />
+                          </div>
+                        </td>
+
+                        <td colSpan={3} />
+                        <td colSpan={1} />
+                        <td className="px-2 py-1.5">
+                          <input
+                            type="date"
+                            value={
+                              editingSP.start_date
+                                ? editingSP.start_date.substring(0, 10)
+                                : ""
+                            }
+                            onChange={(e) =>
+                              setEditingSP((p) => ({
+                                ...p,
+                                start_date: e.target.value,
+                              }))
+                            }
+                            className="w-full text-xs border border-gray-200 rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                          />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input
+                            type="date"
+                            value={
+                              editingSP.end_date
+                                ? editingSP.end_date.substring(0, 10)
+                                : ""
+                            }
+                            onChange={(e) =>
+                              setEditingSP((p) => ({
+                                ...p,
+                                end_date: e.target.value,
+                              }))
+                            }
+                            className="w-full text-xs border border-gray-200 rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                          />
+                        </td>
+                        <td className="px-2 py-2 text-xs text-gray-400 italic">
+                          editing...
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <div className="flex gap-1">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateMutation.mutate({
+                                  id: sp.id,
+                                  data: {
+                                    name: editingSP.name,
+                                    rab_value:
+                                      parseFloat(
+                                        parseCurrency(
+                                          String(editingSP.rab_value),
+                                        ),
+                                      ) || 0,
+                                    status: editingSP.status,
+                                    start_date: editingSP.start_date || null,
+                                    end_date: editingSP.end_date || null,
+                                  },
+                                })
+                              }
+                              disabled={updateMutation.isPending}
+                              className="p-1 text-emerald-600 hover:bg-emerald-100 rounded transition-all"
+                            >
+                              <Save size={13} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingSP(null)}
+                              className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-all"
+                            >
+                              <X size={13} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }
+
+                  return (
+                    <tr
+                      key={sp.id}
+                      className="border-b border-gray-100 hover:bg-gray-50 transition-colors group"
+                    >
+                      <td className="px-3 py-2.5 text-center text-xs text-gray-400">
+                        {i + 1}
+                      </td>
+                      <td className="px-2 py-2.5">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 bg-orange-100 rounded-md flex items-center justify-center shrink-0">
+                            <Building2 size={12} className="text-orange-600" />
+                          </div>
+                          <div>
+                            <div className="text-sm font-medium text-gray-900">
+                              {sp.name}
+                            </div>
+                            {sp.description && (
+                              <div className="text-xs text-gray-400 truncate max-w-40">
+                                {sp.description}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-2 py-2.5">
+                        <Badge
+                          color={
+                            sp.status === "completed"
+                              ? "green"
+                              : sp.status === "on_hold"
+                                ? "amber"
+                                : "blue"
+                          }
+                        >
+                          {sp.status}
+                        </Badge>
+                      </td>
+                      <td className="px-2 py-2.5 text-right text-xs font-semibold text-gray-700">
+                        {formatRupiah(rab)}
+                      </td>
+                      {/* Setelah kolom RAB */}
+                      <td className="px-2 py-2.5 text-xs text-gray-400">
+                        {sp.start_date ? formatDate(sp.start_date) : "-"}
+                      </td>
+                      <td className="px-2 py-2.5 text-xs text-gray-400">
+                        {sp.end_date ? formatDate(sp.end_date) : "-"}
+                      </td>
+                      <td className="px-2 py-2.5 text-right text-xs font-semibold text-blue-600">
+                        {formatRupiah(s.total_billings || 0)}
+                      </td>
+                      <td className="px-2 py-2.5 text-right text-xs font-semibold text-red-500">
+                        {formatRupiah(s.total_spent || 0)}
+                      </td>
+                      <td
+                        className={`px-2 py-2.5 text-right text-xs font-semibold ${(s.cash_available || 0) >= 0 ? "text-emerald-600" : "text-orange-600"}`}
+                      >
+                        {formatRupiah(s.cash_available || 0)}
+                      </td>
+
+                      <td className="px-2 py-2.5">
+                        {rab > 0 ? (
+                          <div>
+                            <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden w-20">
+                              <div
+                                className={`h-full rounded-full ${pct > 90 ? "bg-red-500" : pct > 70 ? "bg-amber-400" : "bg-emerald-500"}`}
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                            <div className="text-xs text-gray-400 mt-0.5">
+                              {Math.round(pct)}%
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-gray-300 text-xs">-</span>
+                        )}
+                      </td>
+                      <td className="px-2 py-2.5">
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedSP(sp);
+                              setDetailOpen(true);
+                            }}
+                            className="text-xs px-2 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded hover:bg-emerald-100 transition-all whitespace-nowrap"
+                          >
+                            Detail
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingSP({ ...sp })}
+                            className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-all"
+                          >
+                            <Pencil size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if ((s.total_spent || 0) > 0) {
+                                toast.error(
+                                  "Tidak bisa hapus — sudah ada pengeluaran",
+                                  { duration: 4000 },
+                                );
+                                return;
+                              }
+                              if (confirm(`Hapus "${sp.name}"?`))
+                                deleteMutation.mutate(sp.id);
+                            }}
+                            className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-all"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* SubProject Detail Modal */}
+      {detailOpen && selectedSP && (
+        <SubProjectDetail
+          subProject={selectedSP}
+          project={project}
+          open={detailOpen}
+          onClose={() => {
+            setDetailOpen(false);
+            setSelectedSP(null);
+          }}
+          onUpdated={() => refetch()}
+        />
+      )}
+    </div>
+  );
+}
+
 // ─── Project Detail ──────────────────────────────────────────
 function ProjectDetail({ project, open, onClose, onSave, saving, onRefresh }) {
   const [form, setForm] = useState(() => parseHeader(project));
   const [payments, setPayments] = useState(() => parsePayments(project));
   const [deletedPaymentIds, setDeletedPaymentIds] = useState([]);
-  const [activeTab, setActiveTab] = useState("payments");
+  const isContractor = form.project_type === "contractor";
+
+  // Reset activeTab kalau tidak valid untuk tipe ini
+  const [activeTab, setActiveTab] = useState(() =>
+    project?.project_type === "contractor" ? "subprojects" : "payments",
+  );
 
   if (!open) return null;
 
   const set = (f, v) => setForm((p) => ({ ...p, [f]: v }));
+
+  // Kalau ganti project_type, reset tab ke yang sesuai
+  const handleTypeChange = (val) => {
+    set("project_type", val);
+    setActiveTab(val === "contractor" ? "subprojects" : "payments");
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -2940,26 +4294,34 @@ function ProjectDetail({ project, open, onClose, onSave, saving, onRefresh }) {
       rab_value: parseFloat(parseCurrency(form.rab_value)) || 0,
       architect_fee: parseFloat(parseCurrency(form.architect_fee)) || 0,
       deletedPaymentIds,
-      payments: payments.map((p) => ({
-        ...p,
-        percentage: p.percentage ? parseFloat(p.percentage) : null,
-        amount: p.amount ? parseFloat(parseCurrency(p.amount)) : null,
-        due_date: p.due_date || null,
-        paid_date: p.paid_date || null,
-        notes: p.notes || null,
-      })),
+      payments: isContractor
+        ? []
+        : payments.map((p) => ({
+            ...p,
+            percentage: p.percentage ? parseFloat(p.percentage) : null,
+            amount: p.amount ? parseFloat(parseCurrency(p.amount)) : null,
+            due_date: p.due_date || null,
+            paid_date: p.paid_date || null,
+            notes: p.notes || null,
+          })),
     });
   };
 
-  const tabs = [
-    {
-      id: "payments",
-      label: "Payment Terms",
-      icon: CreditCard,
-      count: payments.length,
-    },
-    { id: "workers", label: "Workers", icon: HardHat },
-  ];
+  // Tabs berbeda per project_type
+  const tabs = isContractor
+    ? [
+        { id: "subprojects", label: "Sub Projects", icon: Layers },
+        { id: "workers", label: "Workers", icon: HardHat },
+      ]
+    : [
+        {
+          id: "payments",
+          label: "Payment Terms",
+          icon: CreditCard,
+          count: payments.length,
+        },
+        { id: "workers", label: "Workers", icon: HardHat },
+      ];
 
   const hLabel =
     "text-xs font-medium text-gray-500 uppercase tracking-wide mb-1";
@@ -3021,6 +4383,30 @@ function ProjectDetail({ project, open, onClose, onSave, saving, onRefresh }) {
                 PRJ-{String(project.id).padStart(5, "0")}
               </span>
             )}
+            {/* Project Type badge */}
+            <span
+              className={`text-xs font-semibold px-2 py-1 rounded-full ${
+                isContractor
+                  ? "bg-orange-100 text-orange-700"
+                  : "bg-blue-100 text-blue-700"
+              }`}
+            >
+              {isContractor ? "🏗️ Kontraktor" : "✏️ Arsitek"}
+            </span>
+
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500 font-medium">Tipe:</span>
+              <select
+                value={form.project_type}
+                onChange={(e) => handleTypeChange(e.target.value)}
+                disabled={!!project} // tidak bisa ganti tipe setelah dibuat
+                className="text-xs border border-gray-300 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <option value="architect">Arsitek</option>
+                <option value="contractor">Kontraktor</option>
+              </select>
+            </div>
+
             <div className="flex items-center gap-2">
               <span className="text-xs text-gray-500 font-medium">Status:</span>
               <select
@@ -3035,8 +4421,11 @@ function ProjectDetail({ project, open, onClose, onSave, saving, onRefresh }) {
                 <option value="cancelled">Cancelled</option>
               </select>
             </div>
+
             <div className="flex-1" />
-            {project && (
+
+            {/* Stats — berbeda per tipe */}
+            {project && !isContractor && (
               <div className="flex items-center gap-5">
                 <div className="text-right">
                   <div className="text-xs text-gray-400 font-medium uppercase tracking-wide">
@@ -3077,6 +4466,11 @@ function ProjectDetail({ project, open, onClose, onSave, saving, onRefresh }) {
                   </div>
                 </div>
               </div>
+            )}
+
+            {/* Contractor stats — ambil dari sub projects */}
+            {project && isContractor && (
+              <ContractorHeaderStats projectId={project.id} />
             )}
           </div>
 
@@ -3234,7 +4628,8 @@ function ProjectDetail({ project, open, onClose, onSave, saving, onRefresh }) {
 
         {/* Tab Content */}
         <div className="flex-1 overflow-y-auto">
-          {activeTab === "payments" && (
+          {/* Arsitek: Payment Terms */}
+          {activeTab === "payments" && !isContractor && (
             <TabPayments
               payments={payments}
               setPayments={setPayments}
@@ -3245,6 +4640,11 @@ function ProjectDetail({ project, open, onClose, onSave, saving, onRefresh }) {
               onDataRefresh={onRefresh}
             />
           )}
+          {/* Kontraktor: Sub Projects */}
+          {activeTab === "subprojects" && isContractor && (
+            <TabSubProjects project={project} />
+          )}
+          {/* Workers — untuk semua tipe */}
           {activeTab === "workers" && <TabWorkers project={project} />}
         </div>
       </form>
@@ -3259,12 +4659,17 @@ export default function Projects() {
   const [editData, setEditData] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
   const [filterStatus, setFilterStatus] = useState("");
+  const [filterType, setFilterType] = useState(""); // "" | "architect" | "contractor"
   const [loading, setLoading] = useState(false);
 
   const { data: projects = [], isLoading } = useQuery({
-    queryKey: ["projects", filterStatus],
-    queryFn: () =>
-      projectsApi.getAll(filterStatus ? { status: filterStatus } : {}),
+    queryKey: ["projects", filterStatus, filterType],
+    queryFn: () => {
+      const params = {};
+      if (filterStatus) params.status = filterStatus;
+      if (filterType) params.project_type = filterType;
+      return projectsApi.getAll(params);
+    },
   });
 
   const invalidate = () => {
@@ -3283,10 +4688,17 @@ export default function Projects() {
       for (const p of payments) await projectsApi.addPayment(project.id, p);
       return project;
     },
-    onSuccess: () => {
+    onSuccess: async (newProject) => {
       invalidate();
-      setDetailOpen(false);
       toast.success("Project created!");
+      // Bug fix 2: setelah create, langsung buka project yang baru dibuat
+      try {
+        const fresh = await projectsApi.getById(newProject.id);
+        setEditData(fresh);
+        // DetailOpen tetap true — form berubah dari "new" ke "edit" mode
+      } catch {
+        setDetailOpen(false);
+      }
     },
     onError: (e) => toast.error(e.message),
   });
@@ -3358,12 +4770,18 @@ export default function Projects() {
     }
   };
 
-  const filters = [
+  const statusFilters = [
     { label: "All", value: "" },
     { label: "Pending", value: "pending" },
     { label: "In Progress", value: "in_progress" },
     { label: "Completed", value: "completed" },
     { label: "On Hold", value: "on_hold" },
+  ];
+
+  const typeFilters = [
+    { label: "Semua Tipe", value: "" },
+    { label: "✏️ Arsitek", value: "architect" },
+    { label: "🏗️ Kontraktor", value: "contractor" },
   ];
 
   return (
@@ -3384,20 +4802,37 @@ export default function Projects() {
         </Button>
       </div>
 
-      <div className="flex gap-2 flex-wrap">
-        {filters.map((f) => (
-          <button
-            key={f.value}
-            onClick={() => setFilterStatus(f.value)}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-              filterStatus === f.value
-                ? "bg-emerald-600 text-white"
-                : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
-            }`}
-          >
-            {f.label}
-          </button>
-        ))}
+      {/* Filter bar */}
+      <div className="space-y-2">
+        <div className="flex gap-2 flex-wrap">
+          {statusFilters.map((f) => (
+            <button
+              key={f.value}
+              onClick={() => setFilterStatus(f.value)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                filterStatus === f.value
+                  ? "bg-emerald-600 text-white"
+                  : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+          <div className="w-px bg-gray-200 mx-1" />
+          {typeFilters.map((f) => (
+            <button
+              key={f.value}
+              onClick={() => setFilterType(f.value)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                filterType === f.value
+                  ? "bg-blue-600 text-white"
+                  : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {isLoading ? (
@@ -3432,11 +4867,23 @@ export default function Projects() {
                     </span>
                   </div>
                   <div className="flex flex-col justify-center px-4 py-3 flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-semibold text-gray-900 truncate">
                         {p.project_name}
                       </span>
                       <Badge color={st.color}>{st.label}</Badge>
+                      {/* Project type badge */}
+                      <span
+                        className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
+                          p.project_type === "contractor"
+                            ? "bg-orange-100 text-orange-600"
+                            : "bg-blue-100 text-blue-600"
+                        }`}
+                      >
+                        {p.project_type === "contractor"
+                          ? "🏗️ Kontraktor"
+                          : "✏️ Arsitek"}
+                      </span>
                     </div>
                     <div className="text-xs text-gray-400 mt-0.5">
                       {p.client_name}
@@ -3445,10 +4892,16 @@ export default function Projects() {
                   </div>
                   <div className="flex flex-col justify-center px-4 py-3 min-w-30">
                     <span className="text-xs text-gray-400 mb-0.5">
-                      Architect Fee
+                      {p.project_type === "contractor"
+                        ? "Total RAB"
+                        : "Architect Fee"}
                     </span>
                     <span className="text-sm font-semibold text-gray-900">
-                      {formatRupiah(p.architect_fee)}
+                      {formatRupiah(
+                        p.project_type === "contractor"
+                          ? p.rab_value
+                          : p.architect_fee,
+                      )}
                     </span>
                   </div>
                   <div className="flex flex-col justify-center px-4 py-3 w-36">

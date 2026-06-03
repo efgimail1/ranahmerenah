@@ -54,6 +54,7 @@ class ProjectBase(BaseModel):
     rab_value: Optional[Decimal] = Decimal("0")
     architect_fee: Optional[Decimal] = Decimal("0")
     status: Optional[ProjectStatus] = ProjectStatus.pending
+    project_type: Optional[str] = "architect"  
     notes: Optional[str] = None
 
 class ProjectCreate(ProjectBase):
@@ -70,6 +71,7 @@ class ProjectUpdate(BaseModel):
     rab_value: Optional[Decimal] = None
     architect_fee: Optional[Decimal] = None
     status: Optional[ProjectStatus] = None
+    project_type: Optional[str] = None
     notes: Optional[str] = None
 
 class ProjectResponse(ProjectBase):
@@ -88,6 +90,7 @@ class ProjectSummary(BaseModel):
     client_name: str
     location: Optional[str] = None
     status: ProjectStatus
+    project_type: Optional[str] = None
     rab_value: Decimal
     architect_fee: Decimal
     total_paid: Decimal

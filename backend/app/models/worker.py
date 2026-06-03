@@ -42,6 +42,7 @@ class WorkerAssignment(Base):
     id         = Column(Integer, primary_key=True, index=True)
     worker_id  = Column(Integer, ForeignKey("workers.id"), nullable=False)
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
+    sub_project_id = Column(Integer, ForeignKey("sub_projects.id"), nullable=True)
     rate_type  = Column(Enum(RateType), default=RateType.daily)
     rate_amount= Column(Numeric(12, 2), nullable=False)
     start_date = Column(Date)
@@ -61,6 +62,7 @@ class WagePayment(Base):
     assignment_id = Column(Integer, ForeignKey("worker_assignments.id"), nullable=True)
     worker_id     = Column(Integer, ForeignKey("workers.id"), nullable=False)
     project_id    = Column(Integer, ForeignKey("projects.id"), nullable=True)
+    sub_project_id    = Column(Integer, ForeignKey("sub_projects.id"), nullable=True)
     payment_date  = Column(Date, nullable=False)
     period_start  = Column(Date)           # periode kerja dari
     period_end    = Column(Date)           # periode kerja sampai

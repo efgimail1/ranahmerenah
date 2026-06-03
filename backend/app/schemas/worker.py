@@ -29,6 +29,7 @@ class WorkerUpdate(BaseModel):
 class WorkerAssignmentBase(BaseModel):
     worker_id:   int
     project_id:  int
+    sub_project_id: Optional[int]    = None 
     rate_type:   RateType = RateType.daily
     rate_amount: Decimal
     start_date:  Optional[date] = None
@@ -63,6 +64,7 @@ class WagePaymentBase(BaseModel):
     assignment_id: Optional[int] = None
     worker_id:     int
     project_id:    Optional[int] = None
+    sub_project_id: Optional[int]   = None
     payment_date:  date
     period_start:  Optional[date] = None
     period_end:    Optional[date] = None
