@@ -5,11 +5,14 @@ cd .\backend\
   .\venv\Scripts\Activate.ps1    
   uvicorn app.main:app --reload     
 
+git branch
 
 git
 git add .
 git commit -m "keterangan"
 git push
+
+git push -u origin project-for-kontraktor
 
 
 
