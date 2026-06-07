@@ -5,6 +5,7 @@ import enum
 
 class WorkerRole(str, enum.Enum):
     foreman          = "foreman"
+    deputy_foreman   = "deputy_foreman"
     carpenter        = "carpenter"
     helper           = "helper"
     furniture_maker  = "furniture_maker"

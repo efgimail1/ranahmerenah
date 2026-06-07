@@ -18,5 +18,8 @@ git push -u origin project-for-kontraktor
 
 
 
-ada workers yang kerjanya setengah hari saja.
+1. ada workers yang kerjanya setengah hari saja.
+2. di database ada rate_type, rate_amount tapi di form workers tidak ada.
+3. ingin menambahkan role wakil mandor.
+4. kalau ada tukang serba bisa bagaimana ya ? dia bisa tukang kayu, dia bisa tukang besi, bisa semua.
 

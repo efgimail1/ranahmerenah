@@ -15,7 +15,8 @@ import {
 import {
   Plus, Pencil, Trash2, Package, Receipt, Search,
   ChevronDown, ChevronUp, X, Building2, 
-   FileText,  Layers, AlertCircle,
+  FileText,  Layers, AlertCircle,
+  BarChart3, ShoppingCart,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -517,9 +518,318 @@ function PurchaseOrderForm({ initial, onSubmit, loading, projects, suppliers, ca
   );
 }
 
+// ─── Material Report ─────────────────────────────────────────
+function MaterialReport({ projects, suppliers }) {
+  const [filterProject, setFilterProject]       = useState("");
+  const [filterSubProject, setFilterSubProject] = useState("");
+  const [filterPaid, setFilterPaid]             = useState("");
+  const [search, setSearch]                     = useState("");
+  const [expandedItem, setExpandedItem]         = useState(null);
+
+  const selectedProject = projects.find(p => p.id === parseInt(filterProject));
+  const isContractor    = selectedProject?.project_type === "contractor";
+
+  const { data: subProjects = [] } = useQuery({
+    queryKey: ["sub-projects-report", filterProject],
+    queryFn:  () => subProjectsApi.getByProject(parseInt(filterProject)),
+    enabled:  !!filterProject && isContractor,
+  });
+
+  const { data: orders = [], isLoading } = useQuery({
+    queryKey: ["purchase-orders-report", filterProject, filterSubProject, filterPaid],
+    queryFn: () => {
+      const p = {};
+      if (filterProject)    p.project_id     = filterProject;
+      if (filterSubProject) p.sub_project_id  = filterSubProject;
+      if (filterPaid !== "") p.is_paid = filterPaid === "true";
+      return materialsApi.getPurchaseOrders(p);
+    },
+  });
+
+  const supplierMap   = Object.fromEntries(suppliers.map(s => [s.id, s]));
+  const projectMap    = Object.fromEntries(projects.map(p => [p.id, p]));
+  const subProjectMap = Object.fromEntries(subProjects.map(sp => [sp.id, sp]));
+  const selectedSubProject = subProjects.find(sp => sp.id === parseInt(filterSubProject));
+
+  // Aggregate items
+  const aggregated = (() => {
+    const allItems = orders.flatMap(order =>
+      (order.items || []).map(item => ({
+        ...item,
+        order_id:       order.id,
+        order_date:     order.purchase_date,
+        order_is_paid:  order.is_paid,
+        project_id:     order.project_id,
+        sub_project_id: order.sub_project_id,
+        supplier_id:    order.supplier_id,
+      }))
+    );
+    const filtered = search
+      ? allItems.filter(it => it.item_name.toLowerCase().includes(search.toLowerCase()))
+      : allItems;
+
+    const groups = {};
+    filtered.forEach(item => {
+      const key = item.item_name.toLowerCase().trim();
+      if (!groups[key]) {
+        groups[key] = { item_name: item.item_name, unit: item.unit,
+          total_qty: 0, total_gross: 0, total_net: 0, total_discount: 0, lines: [] };
+      }
+      groups[key].total_qty      += parseFloat(item.quantity)       || 0;
+      groups[key].total_gross    += parseFloat(item.subtotal_gross)  || 0;
+      groups[key].total_net      += parseFloat(item.subtotal_net)    || 0;
+      groups[key].total_discount += parseFloat(item.discount_total)  || 0;
+      groups[key].lines.push(item);
+    });
+    return Object.values(groups).sort((a, b) => b.total_net - a.total_net);
+  })();
+
+  const grandGross    = aggregated.reduce((s, g) => s + g.total_gross, 0);
+  const grandNet      = aggregated.reduce((s, g) => s + g.total_net, 0);
+  const grandDiscount = aggregated.reduce((s, g) => s + g.total_discount, 0);
+  const totalLines    = aggregated.reduce((s, g) => s + g.lines.length, 0);
+
+  return (
+    <div className="space-y-4">
+      {/* Context label */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          {filterProject ? (
+            <>
+              {isContractor && <Building2 size={14} className="text-orange-500"/>}
+              <span className="text-sm font-semibold text-gray-800">{selectedProject?.project_name}</span>
+              {selectedSubProject && (
+                <>
+                  <span className="text-gray-300">/</span>
+                  <Layers size={12} className="text-orange-400"/>
+                  <span className="text-sm font-medium text-orange-700">{selectedSubProject.name}</span>
+                </>
+              )}
+            </>
+          ) : (
+            <span className="text-sm text-gray-400">Semua Project</span>
+          )}
+          <span className="text-xs text-gray-400 ml-2">
+            · {aggregated.length} jenis · {totalLines} transaksi
+          </span>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <select value={filterProject}
+          onChange={e=>{ setFilterProject(e.target.value); setFilterSubProject(""); }}
+          className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 w-52">
+          <option value="">Semua Project</option>
+          {projects.map(p=>(
+            <option key={p.id} value={p.id}>
+              {p.project_type==="contractor"?"🏗 ":""}{p.project_name}
+            </option>
+          ))}
+        </select>
+
+        {isContractor && subProjects.length > 0 && (
+          <select value={filterSubProject} onChange={e=>setFilterSubProject(e.target.value)}
+            className="text-sm border border-orange-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-orange-400 w-48">
+            <option value="">Semua Sub Project</option>
+            {subProjects.map(sp=><option key={sp.id} value={sp.id}>{sp.name}</option>)}
+          </select>
+        )}
+
+        <div className="flex gap-1.5">
+          {[{l:"Semua",v:""},{l:"Paid",v:"true"},{l:"Unpaid",v:"false"}].map(f=>(
+            <button key={f.v} onClick={()=>setFilterPaid(f.v)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                filterPaid===f.v?"bg-emerald-600 text-white":"bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
+              }`}>{f.l}</button>
+          ))}
+        </div>
+
+        <div className="relative ml-auto">
+          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/>
+          <input type="text" value={search} onChange={e=>setSearch(e.target.value)}
+            placeholder="Cari material..."
+            className="text-sm border border-gray-200 rounded-lg pl-8 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500 w-44"/>
+        </div>
+      </div>
+
+      {/* Summary cards */}
+      {aggregated.length > 0 && (
+        <div className="grid grid-cols-4 gap-3">
+          {[
+            {label:"Jenis Material", val:aggregated.length, sub:`${totalLines} transaksi PO`, cls:"border-gray-200 bg-white", valCls:"text-gray-800"},
+            {label:"Total Invoice",  val:formatRupiah(grandGross), cls:"border-gray-200 bg-white", valCls:"text-gray-800"},
+            {label:"Total Dibayar",  val:formatRupiah(grandNet),   cls:"border-gray-200 bg-white", valCls:"text-gray-800"},
+            {label:"Discount Profit",val:formatRupiah(grandDiscount), cls:"border-emerald-200 bg-emerald-50", valCls:"text-emerald-700"},
+          ].map((c,i)=>(
+            <div key={i} className={`border rounded-xl p-3 ${c.cls}`}>
+              <div className={`text-xs mb-1 ${i===3?"text-emerald-600":"text-gray-400"}`}>{c.label}</div>
+              <div className={`text-base font-bold ${c.valCls}`}>{c.val}</div>
+              {c.sub && <div className="text-xs text-gray-400 mt-0.5">{c.sub}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Table */}
+      {isLoading ? (
+        <div className="flex justify-center py-12">
+          <div className="animate-spin rounded-full h-6 w-6 border-2 border-emerald-600 border-t-transparent"/>
+        </div>
+      ) : aggregated.length === 0 ? (
+        <div className="text-center py-14 border border-dashed border-gray-200 rounded-xl">
+          <Package size={28} className="mx-auto text-gray-300 mb-3"/>
+          <p className="text-sm text-gray-400">Belum ada data material.</p>
+          <p className="text-xs text-gray-300 mt-1">Pilih project di atas atau buat Purchase Order terlebih dahulu.</p>
+        </div>
+      ) : (
+        <div className="border border-gray-200 rounded-xl overflow-hidden bg-white">
+          <div className="grid grid-cols-[2fr_90px_70px_150px_150px_130px_36px] text-xs font-medium text-gray-400 uppercase tracking-wide px-4 py-2.5 bg-gray-50 border-b border-gray-200">
+            <div>Material</div>
+            <div className="text-right">Total Qty</div>
+            <div className="pl-1">UOM</div>
+            <div className="text-right">Total Invoice</div>
+            <div className="text-right">Total Dibayar</div>
+            <div className="text-right">Discount</div>
+            <div></div>
+          </div>
+
+          {aggregated.map((group, idx) => {
+            const isExp = expandedItem === group.item_name;
+            const avgPrice = group.total_qty > 0 ? group.total_net / group.total_qty : 0;
+            return (
+              <div key={group.item_name} className={idx>0?"border-t border-gray-100":""}>
+                <div
+                  className="grid grid-cols-[2fr_90px_70px_150px_150px_130px_36px] items-center px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors"
+                  onClick={()=>setExpandedItem(isExp?null:group.item_name)}
+                >
+                  <div>
+                    <div className="text-sm font-semibold text-gray-800 capitalize">{group.item_name}</div>
+                    <div className="text-xs text-gray-400 mt-0.5">
+                      avg {formatRupiah(Math.round(avgPrice))}/{group.unit} · {group.lines.length} transaksi
+                    </div>
+                  </div>
+                  <div className="text-right text-sm font-semibold text-gray-700">
+                    {group.total_qty%1===0?group.total_qty.toFixed(0):group.total_qty.toFixed(1)}
+                  </div>
+                  <div className="text-xs text-gray-500 pl-1">{group.unit}</div>
+                  <div className="text-right text-sm text-gray-600">{formatRupiah(group.total_gross)}</div>
+                  <div className="text-right text-sm font-bold text-gray-800">{formatRupiah(group.total_net)}</div>
+                  <div className="text-right text-sm">
+                    {group.total_discount>0
+                      ? <span className="text-emerald-600 font-medium">+{formatRupiah(group.total_discount)}</span>
+                      : <span className="text-gray-300">-</span>}
+                  </div>
+                  <div className="flex justify-center">
+                    {isExp?<ChevronUp size={14} className="text-gray-400"/>:<ChevronDown size={14} className="text-gray-400"/>}
+                  </div>
+                </div>
+
+                {isExp && (
+                  <div className="border-t border-gray-100 bg-gray-50/50">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-gray-100">
+                          <th className="text-left px-6 py-2 font-medium text-gray-400 w-28">PO No.</th>
+                          <th className="text-left px-3 py-2 font-medium text-gray-400">Supplier</th>
+                          <th className="text-left px-3 py-2 font-medium text-gray-400">Project / Sub</th>
+                          <th className="text-left px-3 py-2 font-medium text-gray-400 w-24">Tanggal</th>
+                          <th className="text-right px-3 py-2 font-medium text-gray-400 w-20">Qty</th>
+                          <th className="text-right px-3 py-2 font-medium text-gray-400 w-28">Harga/Unit</th>
+                          <th className="text-right px-3 py-2 font-medium text-gray-400 w-24">Disc/Unit</th>
+                          <th className="text-right px-3 py-2 font-medium text-gray-400 w-28">Subtotal</th>
+                          <th className="text-center px-3 py-2 font-medium text-gray-400 w-16">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {group.lines.map((line, li) => {
+                          const supplier   = supplierMap[line.supplier_id];
+                          const project    = projectMap[line.project_id];
+                          const subProject = subProjectMap[line.sub_project_id];
+                          return (
+                            <tr key={li} className="hover:bg-white transition-colors">
+                              <td className="px-6 py-2">
+                                <span className="font-mono font-bold text-emerald-700">
+                                  PO-{String(line.order_id).padStart(5,"0")}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2 text-gray-700">{supplier?.store_name||"-"}</td>
+                              <td className="px-3 py-2 text-gray-600">
+                                <div>{project?.project_name||"-"}</div>
+                                {subProject&&(
+                                  <div className="flex items-center gap-1 mt-0.5">
+                                    <Layers size={9} className="text-orange-400"/>
+                                    <span className="text-orange-600">{subProject.name}</span>
+                                  </div>
+                                )}
+                              </td>
+                              <td className="px-3 py-2 text-gray-500">{formatDate(line.order_date)}</td>
+                              <td className="px-3 py-2 text-right font-medium text-gray-700">
+                                {parseFloat(line.quantity)%1===0?parseFloat(line.quantity).toFixed(0):parseFloat(line.quantity).toFixed(1)} {line.unit}
+                              </td>
+                              <td className="px-3 py-2 text-right text-gray-600">{formatRupiah(line.unit_price)}</td>
+                              <td className="px-3 py-2 text-right">
+                                {parseFloat(line.discount_per_unit)>0
+                                  ?<span className="text-emerald-600">{formatRupiah(line.discount_per_unit)}</span>
+                                  :<span className="text-gray-300">-</span>}
+                              </td>
+                              <td className="px-3 py-2 text-right font-semibold text-gray-800">
+                                {formatRupiah(line.subtotal_net)}
+                              </td>
+                              <td className="px-3 py-2 text-center">
+                                <span className={`px-1.5 py-0.5 rounded-full font-medium ${
+                                  line.order_is_paid?"bg-emerald-100 text-emerald-700":"bg-amber-100 text-amber-700"
+                                }`}>
+                                  {line.order_is_paid?"Paid":"Open"}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      <tfoot>
+                        <tr className="border-t-2 border-gray-200 bg-white">
+                          <td colSpan={4} className="px-6 py-2 text-xs font-semibold text-gray-500 uppercase">
+                            Subtotal {group.item_name}
+                          </td>
+                          <td className="px-3 py-2 text-right font-bold text-gray-700">
+                            {group.total_qty%1===0?group.total_qty.toFixed(0):group.total_qty.toFixed(1)} {group.unit}
+                          </td>
+                          <td colSpan={2} className="px-3 py-2"></td>
+                          <td className="px-3 py-2 text-right font-bold text-emerald-700">{formatRupiah(group.total_net)}</td>
+                          <td></td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Grand total */}
+          <div className="grid grid-cols-[2fr_90px_70px_150px_150px_130px_36px] border-t-2 border-gray-200 bg-gray-50 px-4 py-3">
+            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              Grand Total ({aggregated.length} jenis material)
+            </div>
+            <div/><div/>
+            <div className="text-right text-sm font-semibold text-gray-700">{formatRupiah(grandGross)}</div>
+            <div className="text-right text-sm font-bold text-emerald-700">{formatRupiah(grandNet)}</div>
+            <div className="text-right text-sm font-semibold text-emerald-600">
+              {grandDiscount>0?`+${formatRupiah(grandDiscount)}`:"-"}
+            </div>
+            <div/>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Page ──────────────────────────────────────────────
 export default function Materials() {
   const qc = useQueryClient();
+  const [pageTab, setPageTab]       = useState("po"); // "po" | "report"
   const [modalOpen, setModalOpen]   = useState(false);
   const [editData, setEditData]     = useState(null);
   const [expandedId, setExpandedId] = useState(null);
@@ -619,16 +929,39 @@ export default function Materials() {
       {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Purchase Orders</h1>
+          <h1 className="text-xl font-semibold text-gray-900">Materials</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            {orders.length} purchase orders · {orders.filter(o=>!o.is_paid).length} belum dibayar
+            {pageTab === "po"
+              ? `${orders.length} purchase orders · ${orders.filter(o=>!o.is_paid).length} belum dibayar`
+              : "Rekapitulasi material per project"}
           </p>
         </div>
-        <Button variant="primary" onClick={()=>{ setEditData(null); setModalOpen(true); }}>
-          <Plus size={16}/> Add Purchase Order
-        </Button>
+        <div className="flex items-center gap-3">
+          {/* Tab switcher */}
+          <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
+            <button onClick={()=>setPageTab("po")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                pageTab==="po" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+              }`}>
+              <ShoppingCart size={13}/> Purchase Orders
+            </button>
+            <button onClick={()=>setPageTab("report")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                pageTab==="report" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+              }`}>
+              <BarChart3 size={13}/> Material Report
+            </button>
+          </div>
+          {pageTab === "po" && (
+            <Button variant="primary" onClick={()=>{ setEditData(null); setModalOpen(true); }}>
+              <Plus size={16}/> Add Purchase Order
+            </Button>
+          )}
+        </div>
       </div>
 
+      {/* ── PURCHASE ORDERS TAB ── */}
+      {pageTab === "po" && (<>
       {/* Summary Cards */}
       {orders.length>0&&(
         <div className="grid grid-cols-4 gap-3">
@@ -886,6 +1219,12 @@ export default function Materials() {
           catalog={catalog}
         />
       </Modal>
+      </>)}
+
+      {/* ── MATERIAL REPORT TAB ── */}
+      {pageTab === "report" && (
+        <MaterialReport projects={projects} suppliers={suppliers} />
+      )}
     </div>
   );
 }

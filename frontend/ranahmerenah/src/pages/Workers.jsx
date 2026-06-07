@@ -13,6 +13,7 @@ import toast from 'react-hot-toast'
 // ─── Role & Rate config ────────────────────────────────────
 const ROLE_OPTIONS = [
   { value: 'foreman', label: 'Mandor' },
+  { value: 'deputy_foreman', label: 'Wakil Mandor' },
   { value: 'carpenter', label: 'Tukang Kayu' },
   { value: 'helper', label: 'Kenek' },
   { value: 'furniture_maker', label: 'Tukang Meubel' },
@@ -25,6 +26,7 @@ const ROLE_OPTIONS = [
 
 const ROLE_COLOR = {
   foreman: 'amber',
+  deputy_foreman: 'amber',
   carpenter: 'blue',
   helper: 'gray',
   furniture_maker: 'green',
@@ -57,6 +59,7 @@ function WorkerForm({ initial, onSubmit, loading }) {
         <Select label="Role *" value={form.role}
           onChange={e => set('role', e.target.value)}>
           <option value="foreman">Mandor</option>
+          <option value="deputy_foreman">Wakil Mandor</option>
           <option value="carpenter">Tukang Kayu</option>
           <option value="helper">Kenek</option>
           <option value="furniture_maker">Tukang Meubel</option>
