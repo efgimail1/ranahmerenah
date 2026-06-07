@@ -101,42 +101,45 @@ class PurchaseItemResponse(PurchaseItemCreate):
 
 # ─── Purchase Order ────────────────────────────────────────
 class PurchaseOrderCreate(BaseModel):
-    project_id: Optional[int] = None
-    supplier_id: Optional[int] = None
-    purchase_date: date
-    due_date : Optional[date] = None
-    is_paid: Optional[bool] = False
-    paid_by: Optional[PaymentBy] = PaymentBy.architect
-    has_receipt: Optional[bool] = False
-    receipt_type: Optional[ReceiptType] = None
-    notes: Optional[str] = None
-    items: List[PurchaseItemCreate] = []
+    project_id:     Optional[int] = None
+    sub_project_id: Optional[int] = None
+    supplier_id:    Optional[int] = None
+    purchase_date:  date
+    due_date:       Optional[date] = None
+    is_paid:        Optional[bool] = False
+    paid_by:        Optional[PaymentBy] = PaymentBy.architect
+    has_receipt:    Optional[bool] = False
+    receipt_type:   Optional[ReceiptType] = None
+    notes:          Optional[str] = None
+    items:          List[PurchaseItemCreate] = []
 
 class PurchaseOrderUpdate(BaseModel):
-    project_id: Optional[int] = None
-    supplier_id: Optional[int] = None
-    purchase_date: Optional[date] = None
-    is_paid: Optional[bool] = None
-    paid_by: Optional[PaymentBy] = None
-    has_receipt: Optional[bool] = None
-    receipt_type: Optional[ReceiptType] = None
-    notes: Optional[str] = None
+    project_id:     Optional[int] = None
+    sub_project_id: Optional[int] = None
+    supplier_id:    Optional[int] = None
+    purchase_date:  Optional[date] = None
+    is_paid:        Optional[bool] = None
+    paid_by:        Optional[PaymentBy] = None
+    has_receipt:    Optional[bool] = None
+    receipt_type:   Optional[ReceiptType] = None
+    notes:          Optional[str] = None
 
 class PurchaseOrderResponse(BaseModel):
-    id: int
-    project_id: Optional[int] = None
-    supplier_id: Optional[int] = None
-    purchase_date: date
-    due_date: Optional[date] = None
-    is_paid: bool
-    paid_by: Optional[PaymentBy] = None
-    has_receipt: bool
-    receipt_type: Optional[ReceiptType] = None
-    notes: Optional[str] = None
-    total_gross: Optional[Decimal] = None
+    id:             int
+    project_id:     Optional[int] = None
+    sub_project_id: Optional[int] = None
+    supplier_id:    Optional[int] = None
+    purchase_date:  date
+    due_date:       Optional[date] = None
+    is_paid:        bool
+    paid_by:        Optional[PaymentBy] = None
+    has_receipt:    bool
+    receipt_type:   Optional[ReceiptType] = None
+    notes:          Optional[str] = None
+    total_gross:    Optional[Decimal] = None
     total_discount: Optional[Decimal] = None
-    total_net: Optional[Decimal] = None
-    items: List[PurchaseItemResponse] = []
+    total_net:      Optional[Decimal] = None
+    items:          List[PurchaseItemResponse] = []
     class Config:
         from_attributes = True
 

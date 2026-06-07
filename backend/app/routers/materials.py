@@ -201,14 +201,17 @@ def _calc_item(item_data: dict) -> dict:
 
 @router.get("/purchase-orders", response_model=List[PurchaseOrderResponse])
 def get_purchase_orders(
-    project_id: Optional[int] = None,
-    supplier_id: Optional[int] = None,
-    is_paid: Optional[bool] = None,
+    project_id:     Optional[int]  = None,
+    sub_project_id: Optional[int]  = None,
+    supplier_id:    Optional[int]  = None,
+    is_paid:        Optional[bool] = None,
     db: Session = Depends(get_db)
 ):
     query = db.query(PurchaseOrder).options(joinedload(PurchaseOrder.items))
     if project_id:
         query = query.filter(PurchaseOrder.project_id == project_id)
+    if sub_project_id:
+        query = query.filter(PurchaseOrder.sub_project_id == sub_project_id)
     if supplier_id:
         query = query.filter(PurchaseOrder.supplier_id == supplier_id)
     if is_paid is not None:
@@ -267,14 +270,15 @@ def update_purchase_order(
         raise HTTPException(status_code=404, detail="Purchase order not found")
 
     # update header
-    order.project_id = payload.project_id
-    order.supplier_id = payload.supplier_id
-    order.purchase_date = payload.purchase_date
-    order.is_paid = payload.is_paid
-    order.paid_by = payload.paid_by
-    order.has_receipt = payload.has_receipt
-    order.receipt_type = payload.receipt_type
-    order.notes = payload.notes
+    order.project_id     = payload.project_id
+    order.sub_project_id = payload.sub_project_id
+    order.supplier_id    = payload.supplier_id
+    order.purchase_date  = payload.purchase_date
+    order.is_paid        = payload.is_paid
+    order.paid_by        = payload.paid_by
+    order.has_receipt    = payload.has_receipt
+    order.receipt_type   = payload.receipt_type
+    order.notes          = payload.notes
 
     # hapus semua items lama lalu buat ulang
     for old_item in order.items:

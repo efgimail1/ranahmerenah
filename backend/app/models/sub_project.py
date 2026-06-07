@@ -24,6 +24,7 @@ class SubProject(Base):
         back_populates="sub_project",
         cascade="all, delete"
     )
+    purchase_orders = relationship("PurchaseOrder", back_populates="sub_project")
 
 
 class SubProjectBilling(Base):

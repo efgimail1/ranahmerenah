@@ -1,5 +1,5 @@
 from app.models.project import Project, ProjectPayment
-from app.models.sub_project import SubProject
+from app.models.sub_project import SubProject, SubProjectBilling
 from app.models.worker import Worker, WorkerAssignment, WagePayment
 from app.models.material import Supplier, Material, ItemCatalog, PurchaseOrder, PurchaseItem
 from app.models.ledger import LedgerEntry

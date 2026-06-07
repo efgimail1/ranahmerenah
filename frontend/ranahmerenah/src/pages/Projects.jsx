@@ -5,6 +5,7 @@ import { workersApi } from "../api/workers";
 import { ledgerApi } from "../api/ledger";
 import { timesheetsApi } from "../api/timesheets";
 import { subProjectsApi } from "../api/subProjects";
+import { materialsApi } from "../api/materials";
 import Button from "../components/ui/Button";
 import Badge from "../components/ui/Badge";
 import Card from "../components/ui/Card";
@@ -3767,6 +3768,169 @@ function SubProjectWorkers({ subProject, project }) {
   );
 }
 
+// ─── SubProjectPurchaseOrders ────────────────────────────────
+function SubProjectPurchaseOrders({ subProject }) {
+  const { data: orders = [], isLoading } = useQuery({
+    queryKey: ["po-subproject", subProject?.id],
+    queryFn: () => materialsApi.getPurchaseOrders({ sub_project_id: subProject.id }),
+    enabled: !!subProject?.id,
+  });
+
+  const { data: suppliers = [] } = useQuery({
+    queryKey: ["suppliers"],
+    queryFn: () => materialsApi.getSuppliers(),
+  });
+  const supplierMap = Object.fromEntries(suppliers.map(s => [s.id, s]));
+
+  // ERP-style cost buckets
+  const totalInvoice   = orders.reduce((s,o) => s + parseFloat(o.total_gross || 0), 0);
+  const totalPaid      = orders.filter(o => o.is_paid).reduce((s,o) => s + parseFloat(o.total_net || 0), 0);
+  const totalCommitted = orders.filter(o => !o.is_paid).reduce((s,o) => s + parseFloat(o.total_net || 0), 0);
+  const totalDiscount  = orders.reduce((s,o) => s + parseFloat(o.total_discount || 0), 0);
+
+  const paidByLabel = { architect: "Arsitek", owner: "Pemilik", other: "Lainnya" };
+
+  if (isLoading) return (
+    <div className="flex justify-center py-10">
+      <div className="animate-spin rounded-full h-5 w-5 border-2 border-emerald-600 border-t-transparent" />
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+
+      {/* Summary cards — ERP style */}
+      <div className="grid grid-cols-4 gap-3">
+        <div className="bg-white border border-gray-200 rounded-xl p-3">
+          <div className="text-xs text-gray-400 mb-1">Total Invoice</div>
+          <div className="text-sm font-bold text-gray-800">{formatRupiah(totalInvoice)}</div>
+          <div className="text-xs text-gray-400 mt-0.5">{orders.length} PO</div>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-xl p-3">
+          <div className="text-xs text-gray-400 mb-1">Actual Paid</div>
+          <div className="text-sm font-bold text-gray-800">{formatRupiah(totalPaid)}</div>
+          <div className="text-xs text-gray-400 mt-0.5">{orders.filter(o => o.is_paid).length} PO lunas</div>
+        </div>
+        <div className={`border rounded-xl p-3 ${totalCommitted > 0 ? "bg-amber-50 border-amber-200" : "bg-gray-50 border-gray-200"}`}>
+          <div className={`text-xs mb-1 ${totalCommitted > 0 ? "text-amber-600" : "text-gray-400"}`}>Outstanding</div>
+          <div className={`text-sm font-bold ${totalCommitted > 0 ? "text-amber-700" : "text-gray-400"}`}>
+            {formatRupiah(totalCommitted)}
+          </div>
+          <div className={`text-xs mt-0.5 ${totalCommitted > 0 ? "text-amber-500" : "text-gray-400"}`}>
+            {orders.filter(o => !o.is_paid).length} belum lunas
+          </div>
+        </div>
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+          <div className="text-xs text-emerald-600 mb-1">Discount Profit</div>
+          <div className="text-sm font-bold text-emerald-700">{formatRupiah(totalDiscount)}</div>
+          <div className="text-xs text-emerald-500 mt-0.5">dari diskon supplier</div>
+        </div>
+      </div>
+
+      {/* Compact committed cost note */}
+      {totalCommitted > 0 && (
+        <div className="flex gap-2 p-2.5 bg-amber-50 border border-amber-100 rounded-lg">
+          <AlertCircle size={12} className="text-amber-400 mt-0.5 shrink-0" />
+          <p className="text-xs text-amber-600">
+            <strong>{formatRupiah(totalCommitted)}</strong> outstanding sudah dihitung sebagai <em>committed cost</em> — mengurangi Kas Tersedia.
+          </p>
+        </div>
+      )}
+
+      {/* PO Table */}
+      {orders.length === 0 ? (
+        <div className="text-center py-10 border border-dashed border-gray-200 rounded-xl">
+          <Wallet size={24} className="mx-auto text-gray-300 mb-2" />
+          <p className="text-sm text-gray-400">Belum ada Purchase Order di sub project ini.</p>
+          <p className="text-xs text-gray-300 mt-1">
+            Buat PO di halaman Materials → pilih project &amp; sub project ini.
+          </p>
+        </div>
+      ) : (
+        <div className="border border-gray-200 rounded-xl overflow-hidden">
+          <table className="w-full text-xs">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="text-left px-3 py-2.5 font-medium text-gray-500 w-24">PO No.</th>
+                <th className="text-left px-3 py-2.5 font-medium text-gray-500">Supplier</th>
+                <th className="text-left px-3 py-2.5 font-medium text-gray-500 w-24">Tanggal</th>
+                <th className="text-center px-3 py-2.5 font-medium text-gray-500 w-20">Paid By</th>
+                <th className="text-center px-3 py-2.5 font-medium text-gray-500 w-20">Status</th>
+                <th className="text-right px-3 py-2.5 font-medium text-gray-500 w-28">Invoice</th>
+                <th className="text-right px-3 py-2.5 font-medium text-gray-500 w-28">Dibayar</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {orders.map(order => {
+                const supplier = supplierMap[order.supplier_id];
+                const hasDisc = parseFloat(order.total_discount) > 0;
+                return (
+                  <tr key={order.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-3 py-2.5">
+                      <span className="font-mono font-bold text-emerald-700">
+                        PO-{String(order.id).padStart(5, "0")}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 text-gray-700 font-medium">
+                      {supplier?.store_name || <span className="text-gray-300 italic">-</span>}
+                    </td>
+                    <td className="px-3 py-2.5 text-gray-500">{formatDate(order.purchase_date)}</td>
+                    <td className="px-3 py-2.5 text-center text-gray-500 capitalize">
+                      {paidByLabel[order.paid_by] || "-"}
+                    </td>
+                    <td className="px-3 py-2.5 text-center">
+                      <span className={`px-1.5 py-0.5 rounded-full text-xs font-semibold ${
+                        order.is_paid ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                      }`}>
+                        {order.is_paid ? "Paid" : "Committed"}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 text-right text-gray-600">
+                      {formatRupiah(order.total_gross)}
+                      {hasDisc && (
+                        <div className="text-emerald-600">-{formatRupiah(order.total_discount)}</div>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 text-right font-semibold text-gray-900">
+                      {formatRupiah(order.total_net)}
+                      {!order.is_paid && (
+                        <div className="text-amber-500 font-normal">unpaid</div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr className="bg-gray-50 border-t-2 border-gray-200">
+                <td colSpan={5} className="px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  Total ({orders.length} PO)
+                </td>
+                <td className="px-3 py-2.5 text-right font-semibold text-gray-700">
+                  {formatRupiah(totalInvoice)}
+                </td>
+                <td className="px-3 py-2.5 text-right font-bold text-emerald-700">
+                  {formatRupiah(totalPaid + totalCommitted)}
+                </td>
+              </tr>
+              {totalDiscount > 0 && (
+                <tr className="bg-emerald-50">
+                  <td colSpan={6} className="px-3 py-2 text-right text-xs text-emerald-600">
+                    Total Discount Profit
+                  </td>
+                  <td className="px-3 py-2 text-right text-xs font-bold text-emerald-700">
+                    +{formatRupiah(totalDiscount)}
+                  </td>
+                </tr>
+              )}
+            </tfoot>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── SubProjectDetail Modal ─────────────────────────────────
 function SubProjectDetail({ subProject, project, open, onClose, onUpdated }) {
   const [activeTab, setActiveTab] = useState("billings");
@@ -3865,7 +4029,7 @@ function SubProjectDetail({ subProject, project, open, onClose, onUpdated }) {
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 shrink-0">
           <div>
@@ -3899,7 +4063,7 @@ function SubProjectDetail({ subProject, project, open, onClose, onUpdated }) {
         </div>
 
         {/* Summary cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 border-b border-gray-100 shrink-0">
+        <div className="grid grid-cols-4 gap-3 p-4 border-b border-gray-100 shrink-0">
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-center">
             <div className="text-xs text-blue-500 mb-1">Transfer Masuk</div>
             <div className="text-sm font-bold text-blue-700">
@@ -4173,14 +4337,7 @@ function SubProjectDetail({ subProject, project, open, onClose, onUpdated }) {
 
           {/* ── PURCHASE ORDERS TAB ── */}
           {activeTab === "po" && (
-            <div className="text-center py-8 text-gray-400 text-sm">
-              <Wallet size={24} className="mx-auto text-gray-300 mb-2" />
-              Purchase Orders per sub project akan tersedia di modul Materials.
-              <br />
-              <span className="text-xs text-gray-300 mt-1 block">
-                (Filter PO berdasarkan sub project — coming soon)
-              </span>
-            </div>
+            <SubProjectPurchaseOrders subProject={data} />
           )}
         </div>
       </div>

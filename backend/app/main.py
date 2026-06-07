@@ -21,12 +21,12 @@ app.add_middleware(
 )
 
 app.include_router(projects.router)
+app.include_router(sub_projects.router)
 app.include_router(workers.router)
 app.include_router(materials.router)
 app.include_router(ledger.router)
 app.include_router(dashboard.router)
 app.include_router(timesheets.router)
-app.include_router(sub_projects.router)
 @app.get("/")
 def root():
     return {"app": os.getenv("APP_NAME"), "status": "running", "version": "1.0.0"}

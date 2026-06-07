@@ -18,41 +18,43 @@ router = APIRouter(prefix="/sub-projects", tags=["Sub Projects"])
 def calc_summary(sp: SubProject, db: Session) -> SubProjectSummary:
     rab = float(sp.rab_value or 0)
 
-    # Total billings
+    # Total billings (transfer masuk dari owner)
     total_billings = sum(float(b.amount or 0) for b in sp.billings)
 
-    # Total workers
+    # Total workers (actual wage payments)
     try:
         from app.models.worker import WagePayment
-        if hasattr(WagePayment, "sub_project_id"):
-            wage_result = db.query(
-                func.coalesce(func.sum(WagePayment.net_amount), 0)
-            ).filter(WagePayment.sub_project_id == sp.id).scalar()
-        else:
-            wage_result = 0
+        wage_result = db.query(
+            func.coalesce(func.sum(WagePayment.net_amount), 0)
+        ).filter(WagePayment.sub_project_id == sp.id).scalar()
         total_workers = float(wage_result or 0)
     except Exception:
         total_workers = 0.0
 
-    # Total PO
+    # Total PO — committed cost: semua PO (paid + unpaid)
+    # Ini sesuai standar ERP: unpaid PO sudah "diikat", mengurangi kas
     try:
         from app.models.material import PurchaseOrder
-        if hasattr(PurchaseOrder, "sub_project_id"):
-            po_result = db.query(
-                func.coalesce(func.sum(PurchaseOrder.total_amount), 0)
-            ).filter(
-                PurchaseOrder.sub_project_id == sp.id,
-                PurchaseOrder.status.in_(["received", "confirmed", "partial"])
-            ).scalar()
-        else:
-            po_result = 0
+        po_result = db.query(
+            func.coalesce(func.sum(PurchaseOrder.total_net), 0)
+        ).filter(PurchaseOrder.sub_project_id == sp.id).scalar()
         total_po = float(po_result or 0)
+
+        # Breakdown: actual paid vs committed (unpaid)
+        po_paid_result = db.query(
+            func.coalesce(func.sum(PurchaseOrder.total_net), 0)
+        ).filter(
+            PurchaseOrder.sub_project_id == sp.id,
+            PurchaseOrder.is_paid == True
+        ).scalar()
+        total_po_paid = float(po_paid_result or 0)
     except Exception:
         total_po = 0.0
+        total_po_paid = 0.0
 
-    total_spent      = total_workers + total_po
+    total_spent      = total_workers + total_po   # committed (semua)
     remaining_budget = rab - total_spent
-    outstanding      = rab - total_billings
+    outstanding      = max(rab - total_billings, 0)
     cash_available   = total_billings - total_spent
 
     return SubProjectSummary(

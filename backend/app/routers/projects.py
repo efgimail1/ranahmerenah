@@ -4,7 +4,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import func
 from typing import List, Optional
 from app.database import get_db
-from app.models.project import Project, ProjectPayment, PaymentStatus
+from app.models.project import Project, ProjectPayment, PaymentStatus, ProjectType
 from app.schemas.project import (
     ProjectCreate, ProjectUpdate, ProjectResponse,
     ProjectSummary, ProjectPaymentCreate,
@@ -32,16 +32,8 @@ def get_all_projects(
     result = []
     for p in projects:
         architect_fee = float(p.architect_fee or 0)
-
-        # total_paid = sum amount_paid dari semua terms (actual yang sudah masuk)
-        total_paid = sum(
-            float(pay.amount_paid or 0)
-            for pay in p.payments
-        )
-
+        total_paid = sum(float(pay.amount_paid or 0) for pay in p.payments)
         total_outstanding = max(architect_fee - total_paid, 0)
-
-        # progress = persentase terkumpul dari total architect fee
         progress = (total_paid / architect_fee * 100) if architect_fee > 0 else 0
 
         result.append(ProjectSummary(
@@ -50,7 +42,7 @@ def get_all_projects(
             client_name=p.client_name,
             location=p.location,
             status=p.status,
-            project_type=p.project_type,
+            project_type=p.project_type or ProjectType.architect,
             rab_value=p.rab_value or 0,
             architect_fee=architect_fee,
             total_paid=total_paid,
@@ -74,7 +66,6 @@ def create_project(payload: ProjectCreate, db: Session = Depends(get_db)):
         rab_value=payload.rab_value,
         architect_fee=payload.architect_fee,
         status=payload.status,
-        project_type=payload.project_type,
         notes=payload.notes,
     )
     db.add(project)
@@ -115,7 +106,7 @@ def get_project(project_id: int, db: Session = Depends(get_db)):
         "rab_value":         project.rab_value,
         "architect_fee":     project.architect_fee,
         "status":            project.status,
-        "project_type":      project.project_type,
+        "project_type":      project.project_type or "architect",
         "notes":             project.notes,
         "total_paid":        total_paid,
         "total_outstanding": outstanding,

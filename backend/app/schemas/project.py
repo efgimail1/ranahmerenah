@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import date
 from decimal import Decimal
-from app.models.project import ProjectStatus, PaymentTermType, PaymentStatus
+from app.models.project import ProjectStatus, PaymentTermType, PaymentStatus, ProjectType
 
 
 # ─── Project Payment ───────────────────────────────────────
@@ -54,7 +54,7 @@ class ProjectBase(BaseModel):
     rab_value: Optional[Decimal] = Decimal("0")
     architect_fee: Optional[Decimal] = Decimal("0")
     status: Optional[ProjectStatus] = ProjectStatus.pending
-    project_type: Optional[str] = "architect"  
+    project_type: Optional[ProjectType] = ProjectType.architect
     notes: Optional[str] = None
 
 class ProjectCreate(ProjectBase):
@@ -71,7 +71,7 @@ class ProjectUpdate(BaseModel):
     rab_value: Optional[Decimal] = None
     architect_fee: Optional[Decimal] = None
     status: Optional[ProjectStatus] = None
-    project_type: Optional[str] = None
+    project_type: Optional[ProjectType] = None
     notes: Optional[str] = None
 
 class ProjectResponse(ProjectBase):
@@ -90,13 +90,13 @@ class ProjectSummary(BaseModel):
     client_name: str
     location: Optional[str] = None
     status: ProjectStatus
-    project_type: Optional[str] = None
+    project_type: Optional[ProjectType] = ProjectType.architect
     rab_value: Decimal
     architect_fee: Decimal
     total_paid: Decimal
     total_outstanding: Decimal
     progress_percent: float
-    payments: List[ProjectPaymentResponse] = []   # ← tambah ini
+    payments: List[ProjectPaymentResponse] = []
 
     class Config:
         from_attributes = True

@@ -74,28 +74,30 @@ class SupplierPriceList(Base):
 class PurchaseOrder(Base):
     __tablename__ = "purchase_orders"
 
-    id = Column(Integer, primary_key=True, index=True)
-    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
-    supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True)
-    purchase_date = Column(Date, nullable=False)
-    is_paid = Column(Boolean, default=False)
-    paid_by = Column(Enum(PaymentBy), default=PaymentBy.architect)
-    has_receipt = Column(Boolean, default=False)
-    receipt_type = Column(Enum(ReceiptType), nullable=True)
+    id             = Column(Integer, primary_key=True, index=True)
+    project_id     = Column(Integer, ForeignKey("projects.id"), nullable=True)
+    sub_project_id = Column(Integer, ForeignKey("sub_projects.id"), nullable=True)
+    supplier_id    = Column(Integer, ForeignKey("suppliers.id"), nullable=True)
+    purchase_date  = Column(Date, nullable=False)
+    is_paid        = Column(Boolean, default=False)
+    paid_by        = Column(Enum(PaymentBy), default=PaymentBy.architect)
+    has_receipt    = Column(Boolean, default=False)
+    receipt_type   = Column(Enum(ReceiptType), nullable=True)
     receipt_image_url = Column(String(500), nullable=True)
-    notes = Column(Text)
+    notes            = Column(Text)
     due_date         = Column(Date, nullable=True)
     linked_ledger_id = Column(Integer, nullable=True)
 
     # totals (dihitung dari items)
-    total_gross = Column(Numeric(15, 2), default=0)   # total harga bon
-    total_discount = Column(Numeric(15, 2), default=0) # total diskon
-    total_net = Column(Numeric(15, 2), default=0)      # yang dibayarkan
+    total_gross    = Column(Numeric(15, 2), default=0)   # total harga bon
+    total_discount = Column(Numeric(15, 2), default=0)   # total diskon
+    total_net      = Column(Numeric(15, 2), default=0)   # yang dibayarkan
 
-    project = relationship("Project", back_populates="purchase_orders")
-    supplier = relationship("Supplier", back_populates="purchase_orders")
-    items = relationship("PurchaseItem", back_populates="order",
-                         cascade="all, delete-orphan")
+    project     = relationship("Project", back_populates="purchase_orders")
+    sub_project = relationship("SubProject", back_populates="purchase_orders")
+    supplier    = relationship("Supplier", back_populates="purchase_orders")
+    items       = relationship("PurchaseItem", back_populates="order",
+                               cascade="all, delete-orphan")
     ledger_entry = relationship("LedgerEntry", back_populates="purchase_order",
                                 uselist=False)
 
