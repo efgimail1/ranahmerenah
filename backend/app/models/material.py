@@ -1,12 +1,8 @@
-from sqlalchemy import Column, Integer, String, Numeric, Text, Date, ForeignKey, Enum, Boolean
+from sqlalchemy import Column, Integer, String, Numeric, Text, Date, DateTime, ForeignKey, Enum, Boolean
 from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
 from app.database import Base
 import enum
-
-class PaymentBy(str, enum.Enum):
-    owner = "owner"
-    architect = "architect"
-    other = "other"
 
 class ReceiptType(str, enum.Enum):
     physical = "physical"
@@ -75,29 +71,31 @@ class PurchaseOrder(Base):
     __tablename__ = "purchase_orders"
 
     id             = Column(Integer, primary_key=True, index=True)
-    project_id     = Column(Integer, ForeignKey("projects.id"), nullable=True)
+    project_id     = Column(Integer, ForeignKey("projects.id"),     nullable=True)
     sub_project_id = Column(Integer, ForeignKey("sub_projects.id"), nullable=True)
-    supplier_id    = Column(Integer, ForeignKey("suppliers.id"), nullable=True)
+    supplier_id    = Column(Integer, ForeignKey("suppliers.id"),    nullable=True)
     purchase_date  = Column(Date, nullable=False)
     is_paid        = Column(Boolean, default=False)
-    paid_by        = Column(Enum(PaymentBy), default=PaymentBy.architect)
+    paid_by        = Column(String(150))
     has_receipt    = Column(Boolean, default=False)
     receipt_type   = Column(Enum(ReceiptType), nullable=True)
     receipt_image_url = Column(String(500), nullable=True)
-    notes            = Column(Text)
-    due_date         = Column(Date, nullable=True)
+    notes          = Column(Text)
+    due_date       = Column(Date, nullable=True)
     linked_ledger_id = Column(Integer, nullable=True)
 
-    # totals (dihitung dari items)
-    total_gross    = Column(Numeric(15, 2), default=0)   # total harga bon
-    total_discount = Column(Numeric(15, 2), default=0)   # total diskon
-    total_net      = Column(Numeric(15, 2), default=0)   # yang dibayarkan
+    total_gross    = Column(Numeric(15, 2), default=0)
+    total_discount = Column(Numeric(15, 2), default=0)
+    total_net      = Column(Numeric(15, 2), default=0)
 
-    project     = relationship("Project", back_populates="purchase_orders")
+    project     = relationship("Project",    back_populates="purchase_orders")
     sub_project = relationship("SubProject", back_populates="purchase_orders")
-    supplier    = relationship("Supplier", back_populates="purchase_orders")
+    supplier    = relationship("Supplier",   back_populates="purchase_orders")
     items       = relationship("PurchaseItem", back_populates="order",
                                cascade="all, delete-orphan")
+    payments    = relationship("POPayment", back_populates="order",
+                               cascade="all, delete-orphan",
+                               order_by="POPayment.payment_date")
     ledger_entry = relationship("LedgerEntry", back_populates="purchase_order",
                                 uselist=False)
 
@@ -139,7 +137,7 @@ class Material(Base):
     subtotal = Column(Numeric(15, 2))
     net_subtotal = Column(Numeric(15, 2))
     is_paid = Column(Boolean, default=False)
-    paid_by = Column(Enum(PaymentBy))
+    paid_by = Column(String(150))
     has_receipt = Column(Boolean, default=False)
     receipt_type = Column(Enum(ReceiptType))
     receipt_image_url = Column(String(500))
@@ -148,3 +146,19 @@ class Material(Base):
     # ← tidak ada back_populates ke project karena Project tidak punya relasi materials lagi
     supplier = relationship("Supplier")
     ledger_entry = relationship("LedgerEntry", back_populates="material", uselist=False)
+
+class POPayment(Base):
+    """Partial/full payment records for a PurchaseOrder"""
+    __tablename__ = "po_payments"
+
+    id             = Column(Integer, primary_key=True, index=True)
+    order_id       = Column(Integer, ForeignKey("purchase_orders.id"), nullable=False)
+    payment_date   = Column(Date, nullable=False)
+    amount         = Column(Numeric(15, 2), nullable=False)
+    paid_by        = Column(String(150))
+    bank_account   = Column(String(50))
+    payment_method = Column(String(20), default="transfer")
+    notes          = Column(Text)
+    created_at     = Column(DateTime, server_default=func.now())
+
+    order = relationship("PurchaseOrder", back_populates="payments")

@@ -5,11 +5,12 @@ import enum
 
 class WorkerRole(str, enum.Enum):
     foreman          = "foreman"
-    deputy_foreman   = "deputy_foreman"
+    sub_foreman      = "sub_foreman"      # Wakil Mandor
     carpenter        = "carpenter"
+    bricklayer       = "bricklayer"
+    bricklayer_general = "bricklayer_general"  # Tukang Bangunan (general)
     helper           = "helper"
     furniture_maker  = "furniture_maker"
-    bricklayer       = "bricklayer"
     painter          = "painter"
     electrician      = "electrician"
     plumber          = "plumber"
@@ -17,6 +18,7 @@ class WorkerRole(str, enum.Enum):
 
 class RateType(str, enum.Enum):
     daily    = "daily"
+    half_day = "half_day"   # Setengah hari
     per_unit = "per_unit"
     fixed    = "fixed"
 

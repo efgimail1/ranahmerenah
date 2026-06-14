@@ -66,6 +66,7 @@ def create_project(payload: ProjectCreate, db: Session = Depends(get_db)):
         rab_value=payload.rab_value,
         architect_fee=payload.architect_fee,
         status=payload.status,
+        project_type=payload.project_type,
         notes=payload.notes,
     )
     db.add(project)

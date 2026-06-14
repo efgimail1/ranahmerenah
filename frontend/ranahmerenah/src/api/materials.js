@@ -22,11 +22,16 @@ export const materialsApi = {
   comparePrices:       (params)           => api.get('/prices/compare', { params }).then(r => r.data),
 
   // Purchase Orders
-  getPurchaseOrders:   (params)    => api.get('/purchase-orders', { params }).then(r => r.data),
-  getPurchaseOrder:    (id)        => api.get(`/purchase-orders/${id}`).then(r => r.data),
-  createPurchaseOrder: (data)      => api.post('/purchase-orders', data).then(r => r.data),
-  updatePurchaseOrder: (id, data)  => api.put(`/purchase-orders/${id}`, data).then(r => r.data),
-  deletePurchaseOrder: (id)        => api.delete(`/purchase-orders/${id}`),
+  getPurchaseOrders:   (params)   => api.get('/purchase-orders', { params }).then(r => r.data),
+  getPurchaseOrder:    (id)       => api.get(`/purchase-orders/${id}`).then(r => r.data),
+  createPurchaseOrder: (data)     => api.post('/purchase-orders', data).then(r => r.data),
+  updatePurchaseOrder: (id, data) => api.put(`/purchase-orders/${id}`, data).then(r => r.data),
+  deletePurchaseOrder: (id)       => api.delete(`/purchase-orders/${id}`),
+
+  // PO Payments (partial payment)
+  getPOPayments:    (orderId)        => api.get(`/purchase-orders/${orderId}/payments`).then(r => r.data),
+  addPOPayment:     (orderId, data)  => api.post(`/purchase-orders/${orderId}/payments`, data).then(r => r.data),
+  deletePOPayment:  (orderId, payId) => api.delete(`/purchase-orders/${orderId}/payments/${payId}`),
 
   // Legacy
   getAll: (params) => api.get('/materials', { params }).then(r => r.data),

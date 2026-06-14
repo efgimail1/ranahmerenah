@@ -3,13 +3,31 @@ from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from decimal import Decimal
 from app.database import get_db
-from app.models.material import Material, Supplier, ItemCatalog, PurchaseOrder, PurchaseItem,SupplierPriceList
+from app.models.material import (
+    Material,
+    Supplier,
+    ItemCatalog,
+    PurchaseOrder,
+    PurchaseItem,
+    SupplierPriceList,
+    POPayment,
+)
 from app.schemas.material import (
-    MaterialCreate, MaterialUpdate, MaterialResponse,
-    SupplierCreate, SupplierUpdate, SupplierResponse,
-    ItemCatalogCreate, ItemCatalogUpdate, ItemCatalogResponse,
-    PurchaseOrderCreate, PurchaseOrderUpdate, PurchaseOrderResponse,
-    SupplierPriceListCreate, SupplierPriceListUpdate, SupplierPriceListResponse
+    MaterialCreate,
+    MaterialResponse,
+    SupplierCreate,
+    SupplierUpdate,
+    SupplierResponse,
+    ItemCatalogCreate,
+    ItemCatalogUpdate,
+    ItemCatalogResponse,
+    PurchaseOrderCreate,
+    PurchaseOrderResponse,
+    SupplierPriceListCreate,
+    SupplierPriceListUpdate,
+    SupplierPriceListResponse,
+    POPaymentCreate,
+    POPaymentResponse,
 )
 
 
@@ -21,13 +39,13 @@ router = APIRouter(tags=["Materials"])
 def get_catalog(db: Session = Depends(get_db)):
     return db.query(ItemCatalog).order_by(ItemCatalog.name).all()
 
-@router.post("/catalog", response_model=ItemCatalogResponse,
-             status_code=status.HTTP_201_CREATED)
+
+@router.post(
+    "/catalog", response_model=ItemCatalogResponse, status_code=status.HTTP_201_CREATED
+)
 def create_catalog_item(payload: ItemCatalogCreate, db: Session = Depends(get_db)):
     # cek duplikat
-    existing = db.query(ItemCatalog).filter(
-        ItemCatalog.name == payload.name
-    ).first()
+    existing = db.query(ItemCatalog).filter(ItemCatalog.name == payload.name).first()
     if existing:
         raise HTTPException(status_code=400, detail="Nama barang sudah ada di katalog")
     item = ItemCatalog(**payload.dict())
@@ -36,8 +54,11 @@ def create_catalog_item(payload: ItemCatalogCreate, db: Session = Depends(get_db
     db.refresh(item)
     return item
 
+
 @router.put("/catalog/{item_id}", response_model=ItemCatalogResponse)
-def update_catalog_item(item_id: int, payload: ItemCatalogUpdate, db: Session = Depends(get_db)):
+def update_catalog_item(
+    item_id: int, payload: ItemCatalogUpdate, db: Session = Depends(get_db)
+):
     item = db.query(ItemCatalog).filter(ItemCatalog.id == item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
@@ -46,6 +67,7 @@ def update_catalog_item(item_id: int, payload: ItemCatalogUpdate, db: Session = 
     db.commit()
     db.refresh(item)
     return item
+
 
 @router.delete("/catalog/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_catalog_item(item_id: int, db: Session = Depends(get_db)):
@@ -61,8 +83,10 @@ def delete_catalog_item(item_id: int, db: Session = Depends(get_db)):
 def get_suppliers(db: Session = Depends(get_db)):
     return db.query(Supplier).order_by(Supplier.store_name).all()
 
-@router.post("/suppliers", response_model=SupplierResponse,
-             status_code=status.HTTP_201_CREATED)
+
+@router.post(
+    "/suppliers", response_model=SupplierResponse, status_code=status.HTTP_201_CREATED
+)
 def create_supplier(payload: SupplierCreate, db: Session = Depends(get_db)):
     supplier = Supplier(**payload.dict())
     db.add(supplier)
@@ -70,8 +94,11 @@ def create_supplier(payload: SupplierCreate, db: Session = Depends(get_db)):
     db.refresh(supplier)
     return supplier
 
+
 @router.put("/suppliers/{supplier_id}", response_model=SupplierResponse)
-def update_supplier(supplier_id: int, payload: SupplierUpdate, db: Session = Depends(get_db)):
+def update_supplier(
+    supplier_id: int, payload: SupplierUpdate, db: Session = Depends(get_db)
+):
     supplier = db.query(Supplier).filter(Supplier.id == supplier_id).first()
     if not supplier:
         raise HTTPException(status_code=404, detail="Supplier not found")
@@ -81,6 +108,7 @@ def update_supplier(supplier_id: int, payload: SupplierUpdate, db: Session = Dep
     db.refresh(supplier)
     return supplier
 
+
 @router.delete("/suppliers/{supplier_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_supplier(supplier_id: int, db: Session = Depends(get_db)):
     supplier = db.query(Supplier).filter(Supplier.id == supplier_id).first()
@@ -89,43 +117,57 @@ def delete_supplier(supplier_id: int, db: Session = Depends(get_db)):
     db.delete(supplier)
     db.commit()
 
+
 @router.get("/suppliers/{supplier_id}/items")
 def get_supplier_items(supplier_id: int, db: Session = Depends(get_db)):
-    orders = db.query(PurchaseOrder).options(
-        joinedload(PurchaseOrder.items)
-    ).filter(PurchaseOrder.supplier_id == supplier_id).all()
+    orders = (
+        db.query(PurchaseOrder)
+        .options(joinedload(PurchaseOrder.items))
+        .filter(PurchaseOrder.supplier_id == supplier_id)
+        .all()
+    )
     result = []
     for order in orders:
         for item in order.items:
-            result.append({
-                "id": item.id,
-                "purchase_date": order.purchase_date,
-                "item_name": item.item_name,
-                "quantity": item.quantity,
-                "unit": item.unit,
-                "unit_price": item.unit_price,
-                "discount_per_unit": item.discount_per_unit,
-                "subtotal_gross": item.subtotal_gross,
-                "subtotal_net": item.subtotal_net,
-            })
+            result.append(
+                {
+                    "id": item.id,
+                    "purchase_date": order.purchase_date,
+                    "item_name": item.item_name,
+                    "quantity": item.quantity,
+                    "unit": item.unit,
+                    "unit_price": item.unit_price,
+                    "discount_per_unit": item.discount_per_unit,
+                    "subtotal_gross": item.subtotal_gross,
+                    "subtotal_net": item.subtotal_net,
+                }
+            )
     return result
 
 
 # ─── Supplier Price List ───────────────────────────────────
 
-@router.get("/suppliers/{supplier_id}/prices",
-            response_model=List[SupplierPriceListResponse])
+
+@router.get(
+    "/suppliers/{supplier_id}/prices", response_model=List[SupplierPriceListResponse]
+)
 def get_supplier_prices(supplier_id: int, db: Session = Depends(get_db)):
-    return db.query(SupplierPriceList).filter(
-        SupplierPriceList.supplier_id == supplier_id
-    ).order_by(SupplierPriceList.item_name).all()
+    return (
+        db.query(SupplierPriceList)
+        .filter(SupplierPriceList.supplier_id == supplier_id)
+        .order_by(SupplierPriceList.item_name)
+        .all()
+    )
 
 
-@router.post("/suppliers/{supplier_id}/prices",
-             response_model=SupplierPriceListResponse,
-             status_code=status.HTTP_201_CREATED)
-def add_supplier_price(supplier_id: int, payload: SupplierPriceListCreate,
-                       db: Session = Depends(get_db)):
+@router.post(
+    "/suppliers/{supplier_id}/prices",
+    response_model=SupplierPriceListResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def add_supplier_price(
+    supplier_id: int, payload: SupplierPriceListCreate, db: Session = Depends(get_db)
+):
     price = SupplierPriceList(**payload.dict(), supplier_id=supplier_id)
     db.add(price)
     db.commit()
@@ -133,10 +175,10 @@ def add_supplier_price(supplier_id: int, payload: SupplierPriceListCreate,
     return price
 
 
-@router.put("/supplier-prices/{price_id}",
-            response_model=SupplierPriceListResponse)
-def update_supplier_price(price_id: int, payload: SupplierPriceListUpdate,
-                          db: Session = Depends(get_db)):
+@router.put("/supplier-prices/{price_id}", response_model=SupplierPriceListResponse)
+def update_supplier_price(
+    price_id: int, payload: SupplierPriceListUpdate, db: Session = Depends(get_db)
+):
     price = db.query(SupplierPriceList).filter(SupplierPriceList.id == price_id).first()
     if not price:
         raise HTTPException(status_code=404, detail="Price not found")
@@ -158,13 +200,13 @@ def delete_supplier_price(price_id: int, db: Session = Depends(get_db)):
 
 # ─── Price Comparison ─────────────────────────────────────
 @router.get("/prices/compare")
-def compare_prices(item_name: Optional[str] = None,
-                   catalog_item_id: Optional[int] = None,
-                   db: Session = Depends(get_db)):
+def compare_prices(
+    item_name: Optional[str] = None,
+    catalog_item_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+):
     """Bandingkan harga barang yang sama antar supplier"""
-    query = db.query(SupplierPriceList).options(
-        joinedload(SupplierPriceList.supplier)
-    )
+    query = db.query(SupplierPriceList).options(joinedload(SupplierPriceList.supplier))
     if item_name:
         query = query.filter(SupplierPriceList.item_name.ilike(f"%{item_name}%"))
     if catalog_item_id:
@@ -173,17 +215,18 @@ def compare_prices(item_name: Optional[str] = None,
     prices = query.order_by(SupplierPriceList.price).all()
     return [
         {
-            "id":            p.id,
-            "supplier_id":   p.supplier_id,
+            "id": p.id,
+            "supplier_id": p.supplier_id,
             "supplier_name": p.supplier.store_name,
-            "item_name":     p.item_name,
-            "unit":          p.unit,
-            "price":         p.price,
-            "effective_date":p.effective_date,
-            "notes":         p.notes,
+            "item_name": p.item_name,
+            "unit": p.unit,
+            "price": p.price,
+            "effective_date": p.effective_date,
+            "notes": p.notes,
         }
         for p in prices
     ]
+
 
 # ─── Purchase Orders ───────────────────────────────────────
 def _calc_item(item_data: dict) -> dict:
@@ -199,15 +242,19 @@ def _calc_item(item_data: dict) -> dict:
         "discount_total": qty * discount,
     }
 
+
 @router.get("/purchase-orders", response_model=List[PurchaseOrderResponse])
 def get_purchase_orders(
-    project_id:     Optional[int]  = None,
-    sub_project_id: Optional[int]  = None,
-    supplier_id:    Optional[int]  = None,
-    is_paid:        Optional[bool] = None,
-    db: Session = Depends(get_db)
+    project_id: Optional[int] = None,
+    sub_project_id: Optional[int] = None,
+    supplier_id: Optional[int] = None,
+    is_paid: Optional[bool] = None,
+    db: Session = Depends(get_db),
 ):
-    query = db.query(PurchaseOrder).options(joinedload(PurchaseOrder.items))
+    query = db.query(PurchaseOrder).options(
+        joinedload(PurchaseOrder.items),
+        joinedload(PurchaseOrder.payments),
+    )
     if project_id:
         query = query.filter(PurchaseOrder.project_id == project_id)
     if sub_project_id:
@@ -216,10 +263,46 @@ def get_purchase_orders(
         query = query.filter(PurchaseOrder.supplier_id == supplier_id)
     if is_paid is not None:
         query = query.filter(PurchaseOrder.is_paid == is_paid)
-    return query.order_by(PurchaseOrder.purchase_date.desc()).all()
+    orders = query.order_by(PurchaseOrder.purchase_date.desc()).all()
+    return [_enrich_order(o) for o in orders]
 
-@router.post("/purchase-orders", response_model=PurchaseOrderResponse,
-             status_code=status.HTTP_201_CREATED)
+
+def _enrich_order(order):
+    total_paid = sum(float(p.amount or 0) for p in (order.payments or []))
+    total_net = float(order.total_net or 0)
+    if total_paid == 0:
+        ps = "unpaid"
+    elif total_paid >= total_net > 0:
+        ps = "paid"
+    else:
+        ps = "partial"
+    return {
+        "id": order.id,
+        "project_id": order.project_id,
+        "sub_project_id": order.sub_project_id,
+        "supplier_id": order.supplier_id,
+        "purchase_date": order.purchase_date,
+        "due_date": order.due_date,
+        "is_paid": order.is_paid,
+        "paid_by": order.paid_by,
+        "has_receipt": order.has_receipt,
+        "receipt_type": order.receipt_type,
+        "notes": order.notes,
+        "total_gross": order.total_gross,
+        "total_discount": order.total_discount,
+        "total_net": order.total_net,
+        "items": order.items or [],
+        "payments": order.payments or [],
+        "total_paid": total_paid,
+        "payment_status": ps,
+    }
+
+
+@router.post(
+    "/purchase-orders",
+    response_model=PurchaseOrderResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def create_purchase_order(payload: PurchaseOrderCreate, db: Session = Depends(get_db)):
     items_data = payload.items
     order_data = payload.dict(exclude={"items"})
@@ -248,37 +331,49 @@ def create_purchase_order(payload: PurchaseOrderCreate, db: Session = Depends(ge
     db.refresh(order)
     return order
 
+
 @router.get("/purchase-orders/{order_id}", response_model=PurchaseOrderResponse)
 def get_purchase_order(order_id: int, db: Session = Depends(get_db)):
-    order = db.query(PurchaseOrder).options(
-        joinedload(PurchaseOrder.items)
-    ).filter(PurchaseOrder.id == order_id).first()
+    order = (
+        db.query(PurchaseOrder)
+        .options(
+            joinedload(PurchaseOrder.items),
+            joinedload(PurchaseOrder.payments),
+        )
+        .filter(PurchaseOrder.id == order_id)
+        .first()
+    )
     if not order:
         raise HTTPException(status_code=404, detail="Purchase order not found")
-    return order
+    return _enrich_order(order)
+
 
 @router.put("/purchase-orders/{order_id}", response_model=PurchaseOrderResponse)
 def update_purchase_order(
     order_id: int,
     payload: PurchaseOrderCreate,  # pakai Create bukan Update supaya bisa terima items
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
-    order = db.query(PurchaseOrder).options(
-        joinedload(PurchaseOrder.items)
-    ).filter(PurchaseOrder.id == order_id).first()
+    order = (
+        db.query(PurchaseOrder)
+        .options(joinedload(PurchaseOrder.items))
+        .filter(PurchaseOrder.id == order_id)
+        .first()
+    )
     if not order:
         raise HTTPException(status_code=404, detail="Purchase order not found")
 
     # update header
-    order.project_id     = payload.project_id
+    order.project_id = payload.project_id
     order.sub_project_id = payload.sub_project_id
-    order.supplier_id    = payload.supplier_id
-    order.purchase_date  = payload.purchase_date
-    order.is_paid        = payload.is_paid
-    order.paid_by        = payload.paid_by
-    order.has_receipt    = payload.has_receipt
-    order.receipt_type   = payload.receipt_type
-    order.notes          = payload.notes
+    order.supplier_id = payload.supplier_id
+    order.purchase_date = payload.purchase_date
+    order.due_date = payload.due_date
+    order.is_paid = payload.is_paid
+    order.paid_by = payload.paid_by
+    order.has_receipt = payload.has_receipt
+    order.receipt_type = payload.receipt_type
+    order.notes = payload.notes
 
     # hapus semua items lama lalu buat ulang
     for old_item in order.items:
@@ -305,6 +400,7 @@ def update_purchase_order(
     db.refresh(order)
     return order
 
+
 @router.delete("/purchase-orders/{order_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_purchase_order(order_id: int, db: Session = Depends(get_db)):
     order = db.query(PurchaseOrder).filter(PurchaseOrder.id == order_id).first()
@@ -319,7 +415,7 @@ def delete_purchase_order(order_id: int, db: Session = Depends(get_db)):
 def get_materials(
     project_id: Optional[int] = None,
     is_paid: Optional[bool] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     query = db.query(Material)
     if project_id:
@@ -328,8 +424,10 @@ def get_materials(
         query = query.filter(Material.is_paid == is_paid)
     return query.order_by(Material.purchase_date.desc()).all()
 
-@router.post("/materials", response_model=MaterialResponse,
-             status_code=status.HTTP_201_CREATED)
+
+@router.post(
+    "/materials", response_model=MaterialResponse, status_code=status.HTTP_201_CREATED
+)
 def create_material(payload: MaterialCreate, db: Session = Depends(get_db)):
     data = payload.dict()
     unit_price = data.get("unit_price") or Decimal("0")
@@ -344,10 +442,88 @@ def create_material(payload: MaterialCreate, db: Session = Depends(get_db)):
     db.refresh(material)
     return material
 
+
 @router.delete("/materials/{material_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_material(material_id: int, db: Session = Depends(get_db)):
     material = db.query(Material).filter(Material.id == material_id).first()
     if not material:
         raise HTTPException(status_code=404, detail="Material not found")
     db.delete(material)
+    db.commit()
+
+
+# ─── PO Payments ───────────────────────────────────────────
+
+
+@router.get(
+    "/purchase-orders/{order_id}/payments", response_model=List[POPaymentResponse]
+)
+def get_po_payments(order_id: int, db: Session = Depends(get_db)):
+    return (
+        db.query(POPayment)
+        .filter(POPayment.order_id == order_id)
+        .order_by(POPayment.payment_date)
+        .all()
+    )
+
+
+@router.post(
+    "/purchase-orders/{order_id}/payments",
+    response_model=POPaymentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def add_po_payment(
+    order_id: int, payload: POPaymentCreate, db: Session = Depends(get_db)
+):
+    order = (
+        db.query(PurchaseOrder)
+        .options(joinedload(PurchaseOrder.payments))
+        .filter(PurchaseOrder.id == order_id)
+        .first()
+    )
+    if not order:
+        raise HTTPException(status_code=404, detail="Purchase order not found")
+
+    payment = POPayment(order_id=order_id, **payload.dict())
+    db.add(payment)
+    db.flush()
+
+    # Recompute total_paid and update is_paid on PO
+    db.refresh(order)
+    total_paid = sum(float(p.amount or 0) for p in order.payments)
+    total_net = float(order.total_net or 0)
+    order.is_paid = total_net > 0 and total_paid >= total_net
+    db.commit()
+    db.refresh(payment)
+    return payment
+
+
+@router.delete(
+    "/purchase-orders/{order_id}/payments/{payment_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_po_payment(order_id: int, payment_id: int, db: Session = Depends(get_db)):
+    payment = (
+        db.query(POPayment)
+        .filter(POPayment.id == payment_id, POPayment.order_id == order_id)
+        .first()
+    )
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    db.delete(payment)
+    db.flush()
+
+    # Recompute is_paid
+    order = (
+        db.query(PurchaseOrder)
+        .options(joinedload(PurchaseOrder.payments))
+        .filter(PurchaseOrder.id == order_id)
+        .first()
+    )
+    if order:
+        remaining_payments = [p for p in order.payments if p.id != payment_id]
+        total_paid = sum(float(p.amount or 0) for p in remaining_payments)
+        order.is_paid = float(order.total_net or 0) > 0 and total_paid >= float(
+            order.total_net or 0
+        )
     db.commit()

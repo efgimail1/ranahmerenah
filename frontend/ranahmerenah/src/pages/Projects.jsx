@@ -45,10 +45,12 @@ import toast from "react-hot-toast";
 // ─── Constants ──────────────────────────────────────────────
 const ROLE_OPTIONS = [
   { value: "foreman", label: "Mandor" },
+  { value: "sub_foreman", label: "Wakil Mandor" },
   { value: "carpenter", label: "Tukang Kayu" },
   { value: "helper", label: "Kenek" },
   { value: "furniture_maker", label: "Tukang Meubel" },
   { value: "bricklayer", label: "Tukang Batu" },
+  { value: "bricklayer_general", label: "Tukang Bangunan" },
   { value: "painter", label: "Tukang Cat" },
   { value: "electrician", label: "Elektrisi" },
   { value: "plumber", label: "Tukang Ledeng" },
@@ -198,6 +200,7 @@ function TimesheetModal({ assignment, project, onClose }) {
 
   const [activeView, setActiveView] = useState("calendar");
   const [selectedIds, setSelectedIds] = useState([]);
+  const [kasbonAmount, setKasbonAmount] = useState(0);
   const [payDate, setPayDate] = useState("");
   const [payNotes, setPayNotes] = useState("");
 
@@ -228,7 +231,7 @@ function TimesheetModal({ assignment, project, onClose }) {
 
   const calcPay = (ts) => {
     const regPay = (parseFloat(ts.regular_hours || 8) / 8) * rate;
-    const otRate = (rate / 8) * parseFloat(ts.overtime_rate || 1.5);
+    const otRate = (rate / 8) * parseFloat(ts.overtime_rate || 1);
     const otPay = parseFloat(ts.overtime_hours || 0) * otRate;
     return { regPay, otPay, total: regPay + otPay };
   };
@@ -237,6 +240,20 @@ function TimesheetModal({ assignment, project, onClose }) {
   const paidTs = timesheets.filter((ts) => ts.is_paid);
   const tsDateMap = Object.fromEntries(
     timesheets.map((ts) => [ts.work_date, ts]),
+  );
+
+  // Hitung total hari (setengah hari = 0.5)
+  const totalDays = timesheets.reduce(
+    (s, ts) => s + parseFloat(ts.regular_hours || 8) / 8,
+    0,
+  );
+  const unpaidDays = unpaidTs.reduce(
+    (s, ts) => s + parseFloat(ts.regular_hours || 8) / 8,
+    0,
+  );
+  const paidDays = paidTs.reduce(
+    (s, ts) => s + parseFloat(ts.regular_hours || 8) / 8,
+    0,
   );
 
   // BARU — awal minggu = Minggu (Sun–Sat)
@@ -267,7 +284,18 @@ function TimesheetModal({ assignment, project, onClose }) {
 
   const selectedTs = timesheets.filter((ts) => selectedIds.includes(ts.id));
   const selectedTotal = selectedTs.reduce((s, ts) => s + calcPay(ts).total, 0);
-  const selectedDays = selectedTs.length;
+  const netAfterKasbon = Math.max(
+    0,
+    selectedTotal - (parseFloat(kasbonAmount) || 0),
+  );
+  const selectedDays = selectedTs.reduce(
+    (s, ts) => s + parseFloat(ts.regular_hours || 8) / 8,
+    0,
+  );
+  const selectedDaysLabel =
+    selectedDays % 1 === 0
+      ? `${selectedDays.toFixed(0)} hari`
+      : `${selectedDays.toFixed(1)} hari`;
   const selectedOT = selectedTs.reduce(
     (s, ts) => s + parseFloat(ts.overtime_hours || 0),
     0,
@@ -325,16 +353,34 @@ function TimesheetModal({ assignment, project, onClose }) {
         rate_snapshot: rate,
         gross_amount: selectedTotal,
         deduction: 0,
-        net_amount: selectedTotal,
-        notes: payNotes || `${selectedDays} hari kerja`,
+        net_amount: netAfterKasbon,
+        notes:
+          payNotes ||
+          `${selectedDaysLabel} kerja${parseFloat(kasbonAmount) > 0 ? ` (kasbon ${formatRupiah(kasbonAmount)})` : ""}`,
       });
 
       await timesheetsApi.markPaid(selectedIds, Number(wage.id));
 
+      // Simpan kasbon kalau ada
+      if (parseFloat(kasbonAmount) > 0 && assignment.sub_project_id) {
+        const sortedTs = [...selectedTs].sort(
+          (a, b) => new Date(a.work_date) - new Date(b.work_date),
+        );
+        await subProjectsApi.createKasbon(assignment.sub_project_id, {
+          week_start: sortedTs[0].work_date,
+          week_end: sortedTs[sortedTs.length - 1].work_date,
+          amount: parseFloat(kasbonAmount),
+          notes: `Kasbon ${worker?.full_name} — ${selectedDaysLabel}`,
+        });
+      }
+
+      // Reset kasbon setelah bayar
+      setKasbonAmount(0);
+
       await ledgerApi.createExpense({
         entry_date: payDate,
         entry_type: "expense",
-        description: `Upah ${worker?.full_name} — ${selectedDays} hari`,
+        description: `Upah ${worker?.full_name} — ${selectedDaysLabel}`,
         paid_to: worker?.full_name || "",
         gross_expense: selectedTotal,
         discount_received: 0,
@@ -424,23 +470,35 @@ function TimesheetModal({ assignment, project, onClose }) {
               <div className="grid grid-cols-4 gap-3">
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
                   <div className="text-lg font-bold text-blue-700">
-                    {timesheets.length}
+                    {totalDays % 1 === 0
+                      ? totalDays.toFixed(0)
+                      : totalDays.toFixed(1)}
                   </div>
                   <div className="text-xs text-blue-600">Total Hari</div>
+                  {timesheets.some(
+                    (ts) => parseFloat(ts.regular_hours || 8) < 8,
+                  ) && (
+                    <div className="text-xs text-purple-500 mt-0.5">
+                      ada ½ hari
+                    </div>
+                  )}
                 </div>
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-center">
                   <div className="text-lg font-bold text-amber-700">
-                    {unpaidTs.length}
+                    {unpaidDays % 1 === 0
+                      ? unpaidDays.toFixed(0)
+                      : unpaidDays.toFixed(1)}
                   </div>
                   <div className="text-xs text-amber-600">Belum Dibayar</div>
                 </div>
                 <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-center">
                   <div className="text-lg font-bold text-emerald-700">
-                    {paidTs.length}
+                    {paidDays % 1 === 0
+                      ? paidDays.toFixed(0)
+                      : paidDays.toFixed(1)}
                   </div>
                   <div className="text-xs text-emerald-600">Sudah Dibayar</div>
                 </div>
-                {/* Tambah: Total sudah dibayar */}
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-center">
                   <div className="text-sm font-bold text-gray-700">
                     {formatRupiah(
@@ -465,7 +523,7 @@ function TimesheetModal({ assignment, project, onClose }) {
                     {MONTH_NAMES[currentMonth.month]} {currentMonth.year}
                   </div>
                   <div className="text-xs text-gray-400">
-                    Klik tanggal untuk tambah · Hover untuk edit lembur / hapus
+                    Klik 1x = full hari · Klik 2x = ½ hari · Klik 3x = hapus
                   </div>
                 </div>
                 <button
@@ -512,14 +570,17 @@ function TimesheetModal({ assignment, project, onClose }) {
                         const ts = tsDateMap[dateStr];
                         const hasOT =
                           ts && parseFloat(ts.overtime_hours || 0) > 0;
+                        const isHalfDay =
+                          ts && parseFloat(ts.regular_hours || 8) < 8;
                         const pay = ts ? calcPay(ts) : null;
 
                         return (
                           <div
                             key={dateStr}
                             onClick={() => {
-                              if (isOutOfRange) return; // ← block
+                              if (isOutOfRange) return;
                               if (!ts) {
+                                // Klik 1: tambah full day
                                 addMutation.mutate({
                                   assignment_id: assignment.id,
                                   worker_id: assignment.worker_id,
@@ -527,8 +588,27 @@ function TimesheetModal({ assignment, project, onClose }) {
                                   work_date: dateStr,
                                   regular_hours: 8,
                                   overtime_hours: 0,
-                                  overtime_rate: 1.5,
+                                  overtime_rate: 1,
                                 });
+                              } else if (ts.is_paid) {
+                                // Sudah dibayar — tidak bisa diubah
+                                toast.error(
+                                  "Hari ini sudah dibayar, tidak bisa diubah.",
+                                );
+                              } else if (
+                                parseFloat(ts.regular_hours || 8) >= 8
+                              ) {
+                                // Klik 2: ubah ke setengah hari
+                                timesheetsApi
+                                  .update(ts.id, { regular_hours: 4 })
+                                  .then(() => {
+                                    refetch();
+                                    toast.success("Diubah ke ½ hari");
+                                  })
+                                  .catch((e) => toast.error(e.message));
+                              } else {
+                                // Klik 3: hapus
+                                delMutation.mutate(ts.id);
                               }
                             }}
                             className={`relative group/cell rounded-lg text-xs flex flex-col items-center justify-center transition-all min-h-14 ${
@@ -537,7 +617,9 @@ function TimesheetModal({ assignment, project, onClose }) {
                                 : ts
                                   ? ts.is_paid
                                     ? "bg-emerald-100 border-2 border-emerald-300 cursor-pointer"
-                                    : "bg-blue-100 border-2 border-blue-300 cursor-pointer"
+                                    : isHalfDay
+                                      ? "bg-purple-100 border-2 border-purple-300 border-dashed cursor-pointer"
+                                      : "bg-blue-100 border-2 border-blue-300 cursor-pointer"
                                   : "hover:bg-gray-100 border border-transparent hover:border-gray-200 cursor-pointer"
                             }`}
                           >
@@ -549,7 +631,9 @@ function TimesheetModal({ assignment, project, onClose }) {
                                   : ts
                                     ? ts.is_paid
                                       ? "text-emerald-700"
-                                      : "text-blue-700"
+                                      : isHalfDay
+                                        ? "text-purple-700"
+                                        : "text-blue-700"
                                     : isToday
                                       ? "text-emerald-600"
                                       : "text-gray-600"
@@ -566,8 +650,16 @@ function TimesheetModal({ assignment, project, onClose }) {
                             {/* Info jam & upah untuk hari kerja */}
                             {ts && (
                               <>
-                                <span className="text-xs text-gray-500 leading-none mt-0.5">
-                                  {parseFloat(ts.regular_hours || 8)}j
+                                <span
+                                  className={`text-xs leading-none mt-0.5 font-medium ${
+                                    isHalfDay
+                                      ? "text-purple-500"
+                                      : "text-gray-500"
+                                  }`}
+                                >
+                                  {isHalfDay
+                                    ? "½ hari"
+                                    : `${parseFloat(ts.regular_hours || 8)}j`}
                                 </span>
                                 {hasOT && (
                                   <span className="text-xs text-orange-500 font-medium leading-none">
@@ -575,7 +667,13 @@ function TimesheetModal({ assignment, project, onClose }) {
                                   </span>
                                 )}
                                 {!ts.is_paid && pay && (
-                                  <span className="text-xs font-medium text-blue-600 leading-none">
+                                  <span
+                                    className={`text-xs font-medium leading-none ${
+                                      isHalfDay
+                                        ? "text-purple-600"
+                                        : "text-blue-600"
+                                    }`}
+                                  >
                                     {formatRupiah(pay.total).replace(
                                       "Rp\u00a0",
                                       "",
@@ -610,10 +708,14 @@ function TimesheetModal({ assignment, project, onClose }) {
               </div>
 
               {/* Legend */}
-              <div className="flex gap-4 text-xs text-gray-500">
+              <div className="flex gap-4 text-xs text-gray-500 flex-wrap">
                 <span className="flex items-center gap-1.5">
                   <span className="w-3 h-3 bg-blue-100 border-2 border-blue-300 rounded inline-block" />
-                  Belum dibayar
+                  Full hari (belum bayar)
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 bg-purple-100 border-2 border-purple-300 border-dashed rounded inline-block" />
+                  ½ hari (belum bayar)
                 </span>
                 <span className="flex items-center gap-1.5">
                   <span className="w-3 h-3 bg-emerald-100 border-2 border-emerald-300 rounded inline-block" />
@@ -956,6 +1058,38 @@ function TimesheetModal({ assignment, project, onClose }) {
                       placeholder="optional"
                     />
                   </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-sm font-medium text-gray-700">
+                      Kasbon minggu ini
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">
+                        Rp
+                      </span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={
+                          kasbonAmount
+                            ? new Intl.NumberFormat("id-ID").format(
+                                kasbonAmount,
+                              )
+                            : ""
+                        }
+                        onChange={(e) =>
+                          setKasbonAmount(e.target.value.replace(/\D/g, ""))
+                        }
+                        placeholder="0"
+                        className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
+                    {parseFloat(kasbonAmount) > 0 && (
+                      <p className="text-xs text-amber-600">
+                        Total dibayar ke tukang: {formatRupiah(netAfterKasbon)}{" "}
+                        (dipotong kasbon {formatRupiah(kasbonAmount)})
+                      </p>
+                    )}
+                  </div>
                   <Button
                     type="button"
                     variant="primary"
@@ -993,6 +1127,7 @@ function PayrollRunModal({ project, assignments, onClose }) {
   const [payDate, setPayDate] = useState("");
   const [payMethod, setPayMethod] = useState("cash");
   const [notes, setNotes] = useState("");
+  const [kasbon, setKasbon] = useState("");
 
   // Load ALL timesheets for this project (unpaid only)
   const { data: allTimesheets = [], isLoading } = useQuery({
@@ -1096,6 +1231,32 @@ function PayrollRunModal({ project, assignments, onClose }) {
     }));
   };
 
+  // Auto-fetch kasbon pending per sub project yang ada di minggu ini
+  const subProjectIds = [
+    ...new Set(
+      assignments.filter((a) => a.sub_project_id).map((a) => a.sub_project_id),
+    ),
+  ];
+
+  const { data: pendingKasbons = [] } = useQuery({
+    queryKey: ["worker-kasbons-pending", subProjectIds.join(",")],
+    queryFn: async () => {
+      if (!subProjectIds.length) return [];
+      const results = await Promise.all(
+        subProjectIds.map((spId) =>
+          subProjectsApi.getWorkerKasbons(spId, "pending"),
+        ),
+      );
+      return results.flat();
+    },
+    enabled: subProjectIds.length > 0,
+  });
+
+  const totalKasbonPending = pendingKasbons.reduce(
+    (s, k) => s + parseFloat(k.amount || 0),
+    0,
+  );
+
   // Calc pay per worker
   const calcAssignmentPay = (assignmentId) => {
     const wTs = byAssignment[assignmentId] || [];
@@ -1104,7 +1265,7 @@ function PayrollRunModal({ project, assignments, onClose }) {
     const rate = parseFloat(assignment?.rate_amount || 0);
     return wTs.reduce((s, ts) => {
       const regPay = (parseFloat(ts.regular_hours || 8) / 8) * rate;
-      const otRate = (rate / 8) * parseFloat(ts.overtime_rate || 1.5);
+      const otRate = (rate / 8) * parseFloat(ts.overtime_rate || 1);
       const otPay = parseFloat(ts.overtime_hours || 0) * otRate;
       return s + regPay + otPay;
     }, 0);
@@ -1130,16 +1291,18 @@ function PayrollRunModal({ project, assignments, onClose }) {
     mutationFn: async () => {
       if (!payDate) throw new Error("Tanggal bayar required");
       if (!selectedWeek) throw new Error("Pilih minggu dulu");
-      if (!selectedAssignments.length) throw new Error("Pilih minimal 1 tukang");
+      if (!selectedAssignments.length)
+        throw new Error("Pilih minimal 1 tukang");
 
-      // Process each selected worker
+      const kasbonTotal = parseFloat(kasbon) || 0;
+
+      // Process each selected worker — wage record per tukang
       for (const [aid, sel] of selectedAssignments) {
         const assignment = assignments.find((a) => a.id === parseInt(aid));
         if (!assignment) continue;
 
         const workerPay = calcAssignmentPay(aid);
         const wTs = byAssignment[aid] || [];
-        const worker = assignment.worker;
 
         const wage = await workersApi.createWage({
           assignment_id: assignment.id,
@@ -1158,20 +1321,104 @@ function PayrollRunModal({ project, assignments, onClose }) {
         });
 
         await timesheetsApi.markPaid(sel.tsIds, Number(wage.id));
+      }
+
+      // Mark kasbon pending → recovered
+      if (kasbonTotal > 0 && pendingKasbons.length > 0) {
+        const payrollRef = `Payroll ${selectedWeek} s/d ${weekEnd}`;
+        await Promise.all(
+          pendingKasbons.map((k) =>
+            subProjectsApi.updateWorkerKasbon(k.sub_project_id, k.id, {
+              status: "recovered",
+              payroll_ref: payrollRef,
+            }),
+          ),
+        );
+        subProjectIds.forEach((spId) => {
+          qc.invalidateQueries({ queryKey: ["worker-kasbons", spId] });
+        });
+      }
+
+      const weekLabel = `${formatDate(selectedWeek)}–${formatDate(weekEnd)}`;
+
+      const spNames = [
+        ...new Set(
+          selectedAssignments
+            .map(([aid]) => {
+              const assignment = assignments.find(
+                (a) => a.id === parseInt(aid),
+              );
+              return assignment?.sub_project_id;
+            })
+            .filter(Boolean)
+            .map((spId) => subProjects.find((sp) => sp.id === spId)?.name)
+            .filter(Boolean),
+        ),
+      ].join(", ");
+
+      const workerNames = selectedAssignments
+        .map(([aid]) => {
+          const assignment = assignments.find((a) => a.id === parseInt(aid));
+          return assignment?.worker?.full_name;
+        })
+        .filter(Boolean);
+
+      const paidTo =
+        workerNames.slice(0, 3).join(", ") +
+        (workerNames.length > 3 ? ` +${workerNames.length - 3} lainnya` : "");
+
+      // =====================================================
+      // Ledger Kasbon
+      // =====================================================
+
+      if (kasbonTotal > 0) {
+        const kasbonDate =
+          pendingKasbons
+            .map((k) => k.kasbon_date)
+            .sort()
+            .pop() || payDate;
 
         await ledgerApi.createExpense({
-          entry_date: payDate,
+          entry_date: kasbonDate,
           entry_type: "expense",
-          description: `Upah ${worker?.full_name} — ${wTs.length} hari (${selectedWeek})`,
-          paid_to: worker?.full_name || "",
-          gross_expense: workerPay,
+          description: `Kasbon Tukang · ${
+            spNames || project?.project_name
+          } · ${weekLabel}`,
+          paid_to: paidTo,
+          gross_expense: kasbonTotal,
           discount_received: 0,
           payment_method: payMethod,
           project_id: project?.id || null,
-          notes: notes || null,
+          notes: `Kasbon dipotong dari payroll ${weekLabel}`,
         });
       }
+
+      // =====================================================
+      // Ledger Payroll (Net Setelah Kasbon)
+      // =====================================================
+
+      await ledgerApi.createExpense({
+        entry_date: payDate,
+        entry_type: "expense",
+        description: `Payroll ${weekLabel} · ${
+          spNames || project?.project_name
+        } · ${selectedAssignments.length} tukang`,
+        paid_to: paidTo,
+        gross_expense: grandTotal - kasbonTotal,
+        discount_received: 0,
+        payment_method: payMethod,
+        project_id: project?.id || null,
+        notes:
+          kasbonTotal > 0
+            ? `Gross Rp ${grandTotal.toLocaleString(
+                "id-ID",
+              )} · Kasbon -Rp ${kasbonTotal.toLocaleString(
+                "id-ID",
+              )}${notes ? ` · ${notes}` : ""}`
+            : notes || null,
+      });
     },
+
     onSuccess: () => {
       qc.invalidateQueries({
         queryKey: ["timesheets-project", project?.id, "unpaid"],
@@ -1179,6 +1426,8 @@ function PayrollRunModal({ project, assignments, onClose }) {
       qc.invalidateQueries({ queryKey: ["timesheets"] });
       qc.invalidateQueries({ queryKey: ["wages"] });
       qc.invalidateQueries({ queryKey: ["ledger"] });
+      qc.invalidateQueries({ queryKey: ["worker-kasbons-pending"] });
+      setKasbon("");
       toast.success(
         `Payroll ${selectedAssignments.length} tukang berhasil diproses!`,
       );
@@ -1440,6 +1689,118 @@ function PayrollRunModal({ project, assignments, onClose }) {
                     </option>
                   ))}
                 </Select>
+
+                {/* Kasbon — auto dari pending worker kasbons */}
+                {totalKasbonPending > 0 && (
+                  <div className="col-span-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                    <div className="flex items-center justify-between mb-2">
+                      <div>
+                        <span className="text-xs font-semibold text-amber-700">
+                          🟡 Kasbon Pending Terdeteksi
+                        </span>
+                        <span className="text-xs text-amber-600 ml-2">
+                          ({pendingKasbons.length} kasbon ·{" "}
+                          {formatRupiah(totalKasbonPending)})
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setKasbon(String(Math.round(totalKasbonPending)))
+                        }
+                        className={`text-xs px-2.5 py-1 rounded-lg font-medium transition-all ${
+                          parseFloat(kasbon) === totalKasbonPending
+                            ? "bg-amber-500 text-white"
+                            : "bg-white border border-amber-300 text-amber-700 hover:bg-amber-100"
+                        }`}
+                      >
+                        {parseFloat(kasbon) === totalKasbonPending
+                          ? "✓ Dipotong"
+                          : "Pakai Kasbon Ini"}
+                      </button>
+                    </div>
+                    {/* List kasbon pending */}
+                    <div className="space-y-1">
+                      {pendingKasbons.map((k) => (
+                        <div
+                          key={k.id}
+                          className="flex justify-between text-xs text-amber-700"
+                        >
+                          <span>
+                            {formatDate(k.kasbon_date)}{" "}
+                            {k.notes ? `· ${k.notes}` : ""}
+                          </span>
+                          <span className="font-semibold">
+                            {formatRupiah(k.amount)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    {parseFloat(kasbon) > 0 && (
+                      <div className="mt-2 pt-2 border-t border-amber-200 flex justify-between text-xs font-semibold text-amber-800">
+                        <span>Total dibayar ke tukang</span>
+                        <span>
+                          {formatRupiah(grandTotal - parseFloat(kasbon))}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Kalau tidak ada kasbon pending, tidak tampil apa-apa */}
+                {/* Kasbon — sekarang auto-populated dari pending */}
+                <div className="col-span-2">
+                  <label className="text-sm font-medium text-gray-700 block mb-1">
+                    Kasbon minggu ini
+                    {totalKasbonPending > 0 && (
+                      <span className="ml-2 text-xs text-amber-500 font-normal">
+                        ({pendingKasbons.length} kasbon pending terdeteksi)
+                      </span>
+                    )}
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">
+                      Rp
+                    </span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={
+                        kasbon
+                          ? new Intl.NumberFormat("id-ID").format(kasbon)
+                          : ""
+                      }
+                      onChange={(e) =>
+                        setKasbon(e.target.value.replace(/\D/g, ""))
+                      }
+                      placeholder="0"
+                      className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+
+                  {/* Auto-populate button kalau ada pending */}
+                  {totalKasbonPending > 0 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setKasbon(String(Math.round(totalKasbonPending)))
+                      }
+                      className="mt-1.5 text-xs text-amber-600 hover:text-amber-700 underline"
+                    >
+                      Pakai total kasbon pending:{" "}
+                      {formatRupiah(totalKasbonPending)}
+                    </button>
+                  )}
+
+                  {parseFloat(kasbon) > 0 && (
+                    <p className="text-xs text-amber-600 mt-1">
+                      Total dibayar ke tukang:{" "}
+                      {formatRupiah(grandTotal - parseFloat(kasbon))} (dipotong
+                      kasbon {formatRupiah(kasbon)})
+                    </p>
+                  )}
+                </div>
+
                 <Input
                   label="Catatan"
                   value={notes}
@@ -1460,6 +1821,11 @@ function PayrollRunModal({ project, assignments, onClose }) {
                 Minggu {formatDate(selectedWeek)} – {formatDate(weekEnd)} ·
                 {selectedAssignments.length} tukang · Total{" "}
                 {formatRupiah(grandTotal)}
+                {parseFloat(kasbon) > 0 && (
+                  <span className="text-amber-600 ml-1">
+                    · Kasbon -{formatRupiah(kasbon)}
+                  </span>
+                )}
               </div>
             </div>
             <Button
@@ -1471,7 +1837,11 @@ function PayrollRunModal({ project, assignments, onClose }) {
               onClick={() => runMutation.mutate()}
             >
               🚀 Proses Payroll {selectedAssignments.length} Tukang ={" "}
-              {formatRupiah(grandTotal)}
+              {formatRupiah(
+                parseFloat(kasbon) > 0
+                  ? grandTotal - parseFloat(kasbon)
+                  : grandTotal,
+              )}
             </Button>
           </div>
         )}
@@ -3622,18 +3992,6 @@ function SubProjectWorkers({ subProject, project }) {
     enabled: !!project?.id && allWorkers.length > 0,
   });
 
-  const ROLE_OPTIONS_MAP = {
-    foreman: "Mandor",
-    carpenter: "Tukang Kayu",
-    helper: "Kenek",
-    furniture_maker: "Tukang Meubel",
-    bricklayer: "Tukang Batu",
-    painter: "Tukang Cat",
-    electrician: "Elektrisi",
-    plumber: "Tukang Ledeng",
-    other: "Lainnya",
-  };
-
   // Filter assignments untuk sub project ini
   const assignments = allAssignments.filter(
     (a) => a.sub_project_id === subProject?.id,
@@ -3736,7 +4094,8 @@ function SubProjectWorkers({ subProject, project }) {
                   </div>
                 </td>
                 <td className="px-3 py-2.5 text-gray-500">
-                  {ROLE_OPTIONS_MAP[a.worker?.role] || a.worker?.role}
+                  {ROLE_OPTIONS.find((r) => r.value === a.worker?.role)
+                    ?.label || a.worker?.role}
                 </td>
                 <td className="px-3 py-2.5 text-gray-500">
                   {a.rate_type === "daily"
@@ -3772,7 +4131,8 @@ function SubProjectWorkers({ subProject, project }) {
 function SubProjectPurchaseOrders({ subProject }) {
   const { data: orders = [], isLoading } = useQuery({
     queryKey: ["po-subproject", subProject?.id],
-    queryFn: () => materialsApi.getPurchaseOrders({ sub_project_id: subProject.id }),
+    queryFn: () =>
+      materialsApi.getPurchaseOrders({ sub_project_id: subProject.id }),
     enabled: !!subProject?.id,
   });
 
@@ -3780,59 +4140,84 @@ function SubProjectPurchaseOrders({ subProject }) {
     queryKey: ["suppliers"],
     queryFn: () => materialsApi.getSuppliers(),
   });
-  const supplierMap = Object.fromEntries(suppliers.map(s => [s.id, s]));
+  const supplierMap = Object.fromEntries(suppliers.map((s) => [s.id, s]));
 
-  // ERP-style cost buckets
-  const totalInvoice   = orders.reduce((s,o) => s + parseFloat(o.total_gross || 0), 0);
-  const totalPaid      = orders.filter(o => o.is_paid).reduce((s,o) => s + parseFloat(o.total_net || 0), 0);
-  const totalCommitted = orders.filter(o => !o.is_paid).reduce((s,o) => s + parseFloat(o.total_net || 0), 0);
-  const totalDiscount  = orders.reduce((s,o) => s + parseFloat(o.total_discount || 0), 0);
-
-  const paidByLabel = { architect: "Arsitek", owner: "Pemilik", other: "Lainnya" };
-
-  if (isLoading) return (
-    <div className="flex justify-center py-10">
-      <div className="animate-spin rounded-full h-5 w-5 border-2 border-emerald-600 border-t-transparent" />
-    </div>
+  const totalInvoice = orders.reduce(
+    (s, o) => s + parseFloat(o.total_gross || 0),
+    0,
   );
+  const totalPaid = orders
+    .filter((o) => o.is_paid)
+    .reduce((s, o) => s + parseFloat(o.total_net || 0), 0);
+  const totalCommitted = orders
+    .filter((o) => !o.is_paid)
+    .reduce((s, o) => s + parseFloat(o.total_net || 0), 0);
+  const totalDiscount = orders.reduce(
+    (s, o) => s + parseFloat(o.total_discount || 0),
+    0,
+  );
+
+  if (isLoading)
+    return (
+      <div className="flex justify-center py-10">
+        <div className="animate-spin rounded-full h-5 w-5 border-2 border-emerald-600 border-t-transparent" />
+      </div>
+    );
 
   return (
     <div className="space-y-4">
-
-      {/* Summary cards — ERP style */}
+      {/* Summary cards */}
       <div className="grid grid-cols-4 gap-3">
         <div className="bg-white border border-gray-200 rounded-xl p-3">
           <div className="text-xs text-gray-400 mb-1">Total Invoice</div>
-          <div className="text-sm font-bold text-gray-800">{formatRupiah(totalInvoice)}</div>
-          <div className="text-xs text-gray-400 mt-0.5">{orders.length} PO</div>
+          <div className="text-sm font-bold text-gray-800">
+            {formatRupiah(totalInvoice)}
+          </div>
+          <div className="text-xs text-gray-400">{orders.length} PO</div>
         </div>
         <div className="bg-white border border-gray-200 rounded-xl p-3">
           <div className="text-xs text-gray-400 mb-1">Actual Paid</div>
-          <div className="text-sm font-bold text-gray-800">{formatRupiah(totalPaid)}</div>
-          <div className="text-xs text-gray-400 mt-0.5">{orders.filter(o => o.is_paid).length} PO lunas</div>
+          <div className="text-sm font-bold text-gray-800">
+            {formatRupiah(totalPaid)}
+          </div>
+          <div className="text-xs text-gray-400">
+            {orders.filter((o) => o.is_paid).length} PO lunas
+          </div>
         </div>
-        <div className={`border rounded-xl p-3 ${totalCommitted > 0 ? "bg-amber-50 border-amber-200" : "bg-gray-50 border-gray-200"}`}>
-          <div className={`text-xs mb-1 ${totalCommitted > 0 ? "text-amber-600" : "text-gray-400"}`}>Outstanding</div>
-          <div className={`text-sm font-bold ${totalCommitted > 0 ? "text-amber-700" : "text-gray-400"}`}>
+        <div
+          className={`border rounded-xl p-3 ${totalCommitted > 0 ? "bg-amber-50 border-amber-200" : "bg-gray-50 border-gray-200"}`}
+        >
+          <div
+            className={`text-xs mb-1 ${totalCommitted > 0 ? "text-amber-600" : "text-gray-400"}`}
+          >
+            Sisa RAB
+          </div>
+          <div
+            className={`text-sm font-bold ${totalCommitted > 0 ? "text-amber-700" : "text-gray-400"}`}
+          >
             {formatRupiah(totalCommitted)}
           </div>
-          <div className={`text-xs mt-0.5 ${totalCommitted > 0 ? "text-amber-500" : "text-gray-400"}`}>
-            {orders.filter(o => !o.is_paid).length} belum lunas
+          <div
+            className={`text-xs ${totalCommitted > 0 ? "text-amber-500" : "text-gray-400"}`}
+          >
+            {orders.filter((o) => !o.is_paid).length} belum lunas
           </div>
         </div>
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
           <div className="text-xs text-emerald-600 mb-1">Discount Profit</div>
-          <div className="text-sm font-bold text-emerald-700">{formatRupiah(totalDiscount)}</div>
-          <div className="text-xs text-emerald-500 mt-0.5">dari diskon supplier</div>
+          <div className="text-sm font-bold text-emerald-700">
+            {formatRupiah(totalDiscount)}
+          </div>
         </div>
       </div>
 
-      {/* Compact committed cost note */}
+      {/* Committed cost note */}
       {totalCommitted > 0 && (
         <div className="flex gap-2 p-2.5 bg-amber-50 border border-amber-100 rounded-lg">
           <AlertCircle size={12} className="text-amber-400 mt-0.5 shrink-0" />
           <p className="text-xs text-amber-600">
-            <strong>{formatRupiah(totalCommitted)}</strong> outstanding sudah dihitung sebagai <em>committed cost</em> — mengurangi Kas Tersedia.
+            <strong>{formatRupiah(totalCommitted)}</strong> outstanding sudah
+            dihitung sebagai <em>committed cost</em> — mengurangi Kas Tersedia.
           </p>
         </div>
       )}
@@ -3841,7 +4226,9 @@ function SubProjectPurchaseOrders({ subProject }) {
       {orders.length === 0 ? (
         <div className="text-center py-10 border border-dashed border-gray-200 rounded-xl">
           <Wallet size={24} className="mx-auto text-gray-300 mb-2" />
-          <p className="text-sm text-gray-400">Belum ada Purchase Order di sub project ini.</p>
+          <p className="text-sm text-gray-400">
+            Belum ada Purchase Order di sub project ini.
+          </p>
           <p className="text-xs text-gray-300 mt-1">
             Buat PO di halaman Materials → pilih project &amp; sub project ini.
           </p>
@@ -3851,51 +4238,81 @@ function SubProjectPurchaseOrders({ subProject }) {
           <table className="w-full text-xs">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="text-left px-3 py-2.5 font-medium text-gray-500 w-24">PO No.</th>
-                <th className="text-left px-3 py-2.5 font-medium text-gray-500">Supplier</th>
-                <th className="text-left px-3 py-2.5 font-medium text-gray-500 w-24">Tanggal</th>
-                <th className="text-center px-3 py-2.5 font-medium text-gray-500 w-20">Paid By</th>
-                <th className="text-center px-3 py-2.5 font-medium text-gray-500 w-20">Status</th>
-                <th className="text-right px-3 py-2.5 font-medium text-gray-500 w-28">Invoice</th>
-                <th className="text-right px-3 py-2.5 font-medium text-gray-500 w-28">Dibayar</th>
+                <th className="text-left px-3 py-2.5 font-medium text-gray-500 w-24">
+                  PO No.
+                </th>
+                <th className="text-left px-3 py-2.5 font-medium text-gray-500">
+                  Supplier
+                </th>
+                <th className="text-left px-3 py-2.5 font-medium text-gray-500 w-24">
+                  Tanggal
+                </th>
+                <th className="text-left px-3 py-2.5 font-medium text-gray-500 w-28">
+                  Dibayar Oleh
+                </th>
+                <th className="text-center px-3 py-2.5 font-medium text-gray-500 w-24">
+                  Status
+                </th>
+                <th className="text-right px-3 py-2.5 font-medium text-gray-500 w-28">
+                  Invoice
+                </th>
+                <th className="text-right px-3 py-2.5 font-medium text-gray-500 w-28">
+                  Dibayar
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {orders.map(order => {
+              {orders.map((order) => {
                 const supplier = supplierMap[order.supplier_id];
                 const hasDisc = parseFloat(order.total_discount) > 0;
                 return (
-                  <tr key={order.id} className="hover:bg-gray-50 transition-colors">
+                  <tr
+                    key={order.id}
+                    className="hover:bg-gray-50 transition-colors"
+                  >
                     <td className="px-3 py-2.5">
                       <span className="font-mono font-bold text-emerald-700">
                         PO-{String(order.id).padStart(5, "0")}
                       </span>
                     </td>
                     <td className="px-3 py-2.5 text-gray-700 font-medium">
-                      {supplier?.store_name || <span className="text-gray-300 italic">-</span>}
+                      {supplier?.store_name || (
+                        <span className="text-gray-300 italic">-</span>
+                      )}
                     </td>
-                    <td className="px-3 py-2.5 text-gray-500">{formatDate(order.purchase_date)}</td>
-                    <td className="px-3 py-2.5 text-center text-gray-500 capitalize">
-                      {paidByLabel[order.paid_by] || "-"}
+                    <td className="px-3 py-2.5 text-gray-500">
+                      {formatDate(order.purchase_date)}
+                    </td>
+                    <td className="px-3 py-2.5 text-gray-500">
+                      {order.paid_by || "-"}
                     </td>
                     <td className="px-3 py-2.5 text-center">
-                      <span className={`px-1.5 py-0.5 rounded-full text-xs font-semibold ${
-                        order.is_paid ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
-                      }`}>
-                        {order.is_paid ? "Paid" : "Committed"}
+                      <span
+                        className={`px-1.5 py-0.5 rounded-full text-xs font-semibold ${
+                          order.payment_status === "paid"
+                            ? "bg-emerald-100 text-emerald-700"
+                            : order.payment_status === "partial"
+                              ? "bg-blue-100 text-blue-700"
+                              : "bg-amber-100 text-amber-700"
+                        }`}
+                      >
+                        {order.payment_status === "paid"
+                          ? "Paid"
+                          : order.payment_status === "partial"
+                            ? "Partial"
+                            : "Committed"}
                       </span>
                     </td>
                     <td className="px-3 py-2.5 text-right text-gray-600">
                       {formatRupiah(order.total_gross)}
                       {hasDisc && (
-                        <div className="text-emerald-600">-{formatRupiah(order.total_discount)}</div>
+                        <div className="text-emerald-600">
+                          -{formatRupiah(order.total_discount)}
+                        </div>
                       )}
                     </td>
                     <td className="px-3 py-2.5 text-right font-semibold text-gray-900">
                       {formatRupiah(order.total_net)}
-                      {!order.is_paid && (
-                        <div className="text-amber-500 font-normal">unpaid</div>
-                      )}
                     </td>
                   </tr>
                 );
@@ -3903,7 +4320,10 @@ function SubProjectPurchaseOrders({ subProject }) {
             </tbody>
             <tfoot>
               <tr className="bg-gray-50 border-t-2 border-gray-200">
-                <td colSpan={5} className="px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                <td
+                  colSpan={5}
+                  className="px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide"
+                >
                   Total ({orders.length} PO)
                 </td>
                 <td className="px-3 py-2.5 text-right font-semibold text-gray-700">
@@ -3915,7 +4335,10 @@ function SubProjectPurchaseOrders({ subProject }) {
               </tr>
               {totalDiscount > 0 && (
                 <tr className="bg-emerald-50">
-                  <td colSpan={6} className="px-3 py-2 text-right text-xs text-emerald-600">
+                  <td
+                    colSpan={6}
+                    className="px-3 py-2 text-right text-xs text-emerald-600"
+                  >
                     Total Discount Profit
                   </td>
                   <td className="px-3 py-2 text-right text-xs font-bold text-emerald-700">
@@ -3931,12 +4354,552 @@ function SubProjectPurchaseOrders({ subProject }) {
   );
 }
 
+function ContractorKasbonSection({ subProjectId }) {
+  const qc = useQueryClient();
+  const [form, setForm] = useState({ kasbon_date: "", amount: "", notes: "" });
+  const setF = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+
+  const { data: kasbons = [] } = useQuery({
+    queryKey: ["contractor-kasbons", subProjectId],
+    queryFn: () => subProjectsApi.getContractorKasbons(subProjectId),
+    enabled: !!subProjectId,
+  });
+
+  const inv = () =>
+    qc.invalidateQueries({ queryKey: ["contractor-kasbons", subProjectId] });
+
+  const createMutation = useMutation({
+    mutationFn: (data) =>
+      subProjectsApi.createContractorKasbon(subProjectId, data),
+    onSuccess: () => {
+      inv();
+      setForm({ kasbon_date: "", amount: "", notes: "" });
+      toast.success("Kasbon dicatat!");
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id) => subProjectsApi.deleteContractorKasbon(subProjectId, id),
+    onSuccess: () => {
+      inv();
+      toast.success("Kasbon dihapus.");
+    },
+  });
+
+  const total = kasbons.reduce((s, k) => s + parseFloat(k.amount || 0), 0);
+
+  const fI =
+    "text-xs border border-gray-200 rounded-lg px-2.5 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 w-full";
+
+  return (
+    <div className="mt-4 border border-amber-200 rounded-xl overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-2.5 bg-amber-50 border-b border-amber-200">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-amber-700 uppercase tracking-wide">
+            Kasbon Kontraktor
+          </span>
+          {kasbons.length > 0 && (
+            <span className="text-xs text-amber-600">
+              · Total {formatRupiah(total)}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* List */}
+      {kasbons.length > 0 && (
+        <table className="w-full text-xs">
+          <thead className="bg-gray-50 border-b border-gray-100">
+            <tr>
+              <th className="text-left px-4 py-2 font-medium text-gray-400 w-24">
+                Tanggal
+              </th>
+              <th className="text-right px-3 py-2 font-medium text-gray-400 w-32">
+                Jumlah
+              </th>
+              <th className="text-left px-3 py-2 font-medium text-gray-400">
+                Catatan
+              </th>
+              <th className="w-8"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50">
+            {kasbons.map((k) => (
+              <tr key={k.id} className="hover:bg-gray-50">
+                <td className="px-4 py-2.5 text-gray-600">
+                  {formatDate(k.kasbon_date)}
+                </td>
+                <td className="px-3 py-2.5 text-right font-semibold text-amber-700">
+                  {formatRupiah(k.amount)}
+                </td>
+                <td className="px-3 py-2.5 text-gray-400 italic">
+                  {k.notes || ""}
+                </td>
+                <td className="px-2 py-2.5 text-center">
+                  <button
+                    onClick={() => {
+                      if (confirm("Hapus kasbon ini?"))
+                        deleteMutation.mutate(k.id);
+                    }}
+                    className="p-1 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded"
+                  >
+                    <Trash2 size={11} />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="border-t-2 border-amber-200 bg-amber-50">
+              <td className="px-4 py-2 text-xs font-semibold text-amber-700">
+                Total
+              </td>
+              <td className="px-3 py-2 text-right font-bold text-amber-700">
+                {formatRupiah(total)}
+              </td>
+              <td colSpan={2}></td>
+            </tr>
+          </tfoot>
+        </table>
+      )}
+
+      {/* Add form */}
+      <div className="px-4 py-3 bg-white border-t border-amber-100">
+        <div className="grid grid-cols-4 gap-2 items-end">
+          <div>
+            <div className="text-xs text-gray-400 mb-1">Tanggal *</div>
+            <input
+              type="date"
+              value={form.kasbon_date}
+              onChange={(e) => setF("kasbon_date", e.target.value)}
+              className={fI}
+            />
+          </div>
+          <div>
+            <div className="text-xs text-gray-400 mb-1">Jumlah *</div>
+            <div className="relative">
+              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">
+                Rp
+              </span>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={
+                  form.amount
+                    ? new Intl.NumberFormat("id-ID").format(
+                        String(form.amount).replace(/\D/g, ""),
+                      )
+                    : ""
+                }
+                onChange={(e) =>
+                  setF("amount", e.target.value.replace(/\D/g, ""))
+                }
+                placeholder="0"
+                className={`${fI} pl-7`}
+              />
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-gray-400 mb-1">Catatan</div>
+            <input
+              type="text"
+              value={form.notes}
+              onChange={(e) => setF("notes", e.target.value)}
+              placeholder="optional"
+              className={fI}
+            />
+          </div>
+          <button
+            onClick={() => {
+              const amt =
+                parseFloat(String(form.amount).replace(/\D/g, "")) || 0;
+              if (!form.kasbon_date) return toast.error("Tanggal harus diisi");
+              if (!amt) return toast.error("Jumlah harus diisi");
+              createMutation.mutate({
+                kasbon_date: form.kasbon_date,
+                amount: amt,
+                notes: form.notes || null,
+              });
+            }}
+            disabled={createMutation.isPending}
+            className="py-2 px-3 bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold rounded-lg transition-all disabled:opacity-50"
+          >
+            {createMutation.isPending ? "..." : "+ Kasbon"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WorkerKasbonTab({ subProjectId }) {
+  const qc = useQueryClient();
+  const emptyForm = {
+    kasbon_date: "",
+    amount: "",
+    transferred_by: "",
+    transferred_to: "",
+    bank_account: "",
+    notes: "",
+  };
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState(emptyForm);
+  const setF = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+
+  const { data: kasbons = [], isLoading } = useQuery({
+    queryKey: ["worker-kasbons", subProjectId],
+    queryFn: () => subProjectsApi.getWorkerKasbons(subProjectId),
+    enabled: !!subProjectId,
+  });
+
+  const inv = () =>
+    qc.invalidateQueries({ queryKey: ["worker-kasbons", subProjectId] });
+
+  const createMutation = useMutation({
+    mutationFn: (data) => subProjectsApi.createWorkerKasbon(subProjectId, data),
+    onSuccess: () => {
+      inv();
+      setForm(emptyForm);
+      toast.success("Kasbon dicatat!");
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id) => subProjectsApi.deleteWorkerKasbon(subProjectId, id),
+    onSuccess: () => {
+      inv();
+      toast.success("Kasbon dihapus.");
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const pending = kasbons.filter((k) => k.status === "pending");
+  const recovered = kasbons.filter((k) => k.status === "recovered");
+  const totalPending = pending.reduce(
+    (s, k) => s + parseFloat(k.amount || 0),
+    0,
+  );
+
+  const handleSave = () => {
+    const amt = parseFloat(String(form.amount).replace(/\D/g, "")) || 0;
+    if (!form.kasbon_date) return toast.error("Tanggal harus diisi");
+    if (!amt) return toast.error("Jumlah harus diisi");
+    createMutation.mutate({
+      kasbon_date: form.kasbon_date,
+      amount: amt,
+      transferred_by: form.transferred_by || null,
+      transferred_to: form.transferred_to || null,
+      bank_account: form.bank_account || null,
+      notes: form.notes || null,
+    });
+  };
+
+  const iCls =
+    "text-xs border border-gray-200 rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-amber-400 w-full";
+
+  if (isLoading)
+    return (
+      <div className="flex justify-center py-10">
+        <div className="animate-spin rounded-full h-5 w-5 border-2 border-amber-500 border-t-transparent" />
+      </div>
+    );
+
+  return (
+    <div className="space-y-4">
+      {/* Pending kasbon */}
+      <div className="border border-amber-200 rounded-xl overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-2.5 bg-amber-50 border-b border-amber-200">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-amber-700 uppercase tracking-wide">
+              🟡 Kasbon Pending
+            </span>
+            {totalPending > 0 && (
+              <span className="text-xs text-amber-600 font-medium">
+                · {formatRupiah(totalPending)} belum dipotong
+              </span>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setShowForm((s) => !s);
+              setForm(emptyForm);
+            }}
+            className="text-xs px-2.5 py-1 bg-amber-500 ..."
+          >
+            {showForm ? "Batal" : "+ Tambah Kasbon"}
+          </button>
+        </div>
+
+        <table className="w-full text-xs">
+          <thead className="bg-gray-50 border-b border-gray-100">
+            <tr>
+              <th className="text-left px-3 py-2 font-medium text-gray-400 w-24">
+                Tanggal
+              </th>
+              <th className="text-right px-3 py-2 font-medium text-gray-400 w-32">
+                Jumlah
+              </th>
+              <th className="text-left px-3 py-2 font-medium text-gray-400 w-28">
+                Dari
+              </th>
+              <th className="text-left px-3 py-2 font-medium text-gray-400 w-28">
+                Ke
+              </th>
+              <th className="text-left px-3 py-2 font-medium text-gray-400 w-20">
+                Bank
+              </th>
+              <th className="text-left px-3 py-2 font-medium text-gray-400">
+                Catatan
+              </th>
+              <th className="w-8"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50">
+            {/* Input row */}
+            {showForm && (
+              <tr className="bg-amber-50/40 border-b border-amber-100">
+                <td className="px-2 py-1.5">
+                  <input
+                    type="date"
+                    value={form.kasbon_date}
+                    onChange={(e) => setF("kasbon_date", e.target.value)}
+                    className={iCls}
+                  />
+                </td>
+                <td className="px-2 py-1.5">
+                  <div className="relative">
+                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400">
+                      Rp
+                    </span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={
+                        form.amount
+                          ? new Intl.NumberFormat("id-ID").format(
+                              String(form.amount).replace(/\D/g, ""),
+                            )
+                          : ""
+                      }
+                      onChange={(e) =>
+                        setF("amount", e.target.value.replace(/\D/g, ""))
+                      }
+                      placeholder="0"
+                      className={`${iCls} pl-7 text-right`}
+                    />
+                  </div>
+                </td>
+                <td className="px-2 py-1.5">
+                  <input
+                    type="text"
+                    value={form.transferred_by}
+                    onChange={(e) => setF("transferred_by", e.target.value)}
+                    placeholder="Nama pengirim"
+                    className={iCls}
+                  />
+                </td>
+                <td className="px-2 py-1.5">
+                  <input
+                    type="text"
+                    value={form.transferred_to}
+                    onChange={(e) => setF("transferred_to", e.target.value)}
+                    placeholder="Ke siapa"
+                    className={iCls}
+                  />
+                </td>
+                <td className="px-2 py-1.5">
+                  <input
+                    type="text"
+                    value={form.bank_account}
+                    onChange={(e) => setF("bank_account", e.target.value)}
+                    placeholder="BCA, Jago..."
+                    className={iCls}
+                  />
+                </td>
+                <td className="px-2 py-1.5">
+                  <input
+                    type="text"
+                    value={form.notes}
+                    onChange={(e) => setF("notes", e.target.value)}
+                    placeholder="optional"
+                    className={iCls}
+                  />
+                </td>
+                <td className="px-2 py-1.5 text-center">
+                  <button
+                    onClick={handleSave}
+                    disabled={createMutation.isPending}
+                    className="p-1 text-amber-600 hover:bg-amber-100 rounded transition-all"
+                    title="Simpan"
+                  >
+                    <Save size={13} />
+                  </button>
+                </td>
+              </tr>
+            )}
+
+            {/* Pending rows */}
+            {pending.length === 0 && !showForm ? (
+              <tr>
+                <td
+                  colSpan={7}
+                  className="px-4 py-5 text-center text-gray-400 italic"
+                >
+                  Tidak ada kasbon pending. Klik "+ Tambah Kasbon" untuk
+                  mencatat.
+                </td>
+              </tr>
+            ) : (
+              pending.map((k) => (
+                <tr key={k.id} className="hover:bg-gray-50 group">
+                  <td className="px-3 py-2.5 text-gray-600">
+                    {formatDate(k.kasbon_date)}
+                  </td>
+                  <td className="px-3 py-2.5 text-right font-semibold text-amber-700">
+                    {formatRupiah(k.amount)}
+                  </td>
+                  <td className="px-3 py-2.5 text-gray-600">
+                    {k.transferred_by || "-"}
+                  </td>
+                  <td className="px-3 py-2.5 text-gray-600">
+                    {k.transferred_to || "-"}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    {k.bank_account ? (
+                      <span className="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
+                        {k.bank_account}
+                      </span>
+                    ) : (
+                      <span className="text-gray-300">-</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5 text-gray-400 italic">
+                    {k.notes || "-"}
+                  </td>
+                  <td className="px-2 py-2.5 text-center">
+                    <button
+                      onClick={() => {
+                        if (confirm("Hapus kasbon ini?"))
+                          deleteMutation.mutate(k.id);
+                      }}
+                      className="p-1 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded opacity-0 group-hover:opacity-100 transition-all"
+                    >
+                      <Trash2 size={11} />
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+          {pending.length > 0 && (
+            <tfoot>
+              <tr className="border-t-2 border-amber-200 bg-amber-50">
+                <td className="px-3 py-2 text-xs font-semibold text-amber-700">
+                  Total Pending ({pending.length})
+                </td>
+                <td className="px-3 py-2 text-right font-bold text-amber-700">
+                  {formatRupiah(totalPending)}
+                </td>
+                <td colSpan={5}>
+                  <span className="text-xs text-amber-500 px-3">
+                    ↓ Akan dipotong otomatis saat Payroll Run minggu ini
+                  </span>
+                </td>
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+
+      {/* Recovered kasbon history */}
+      {recovered.length > 0 && (
+        <div className="border border-gray-200 rounded-xl overflow-hidden">
+          <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-100">
+            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              ✓ Riwayat Kasbon (Sudah Dipotong)
+            </span>
+          </div>
+          <table className="w-full text-xs">
+            <thead className="bg-gray-50 border-b border-gray-100">
+              <tr>
+                <th className="text-left px-3 py-2 font-medium text-gray-400 w-24">
+                  Tanggal
+                </th>
+                <th className="text-right px-3 py-2 font-medium text-gray-400 w-32">
+                  Jumlah
+                </th>
+                <th className="text-left px-3 py-2 font-medium text-gray-400 w-28">
+                  Dari
+                </th>
+                <th className="text-left px-3 py-2 font-medium text-gray-400 w-28">
+                  Ke
+                </th>
+                <th className="text-left px-3 py-2 font-medium text-gray-400 w-20">
+                  Bank
+                </th>
+                <th className="text-left px-3 py-2 font-medium text-gray-400">
+                  Catatan
+                </th>
+                <th className="text-left px-3 py-2 font-medium text-gray-400 w-28">
+                  Dipotong di
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {recovered.map((k) => (
+                <tr key={k.id} className="opacity-60 hover:opacity-100">
+                  <td className="px-3 py-2.5 text-gray-600">
+                    {formatDate(k.kasbon_date)}
+                  </td>
+                  <td className="px-3 py-2.5 text-right font-semibold text-gray-600">
+                    {formatRupiah(k.amount)}
+                  </td>
+                  <td className="px-3 py-2.5 text-gray-500">
+                    {k.transferred_by || "-"}
+                  </td>
+                  <td className="px-3 py-2.5 text-gray-500">
+                    {k.transferred_to || "-"}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    {k.bank_account ? (
+                      <span className="bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">
+                        {k.bank_account}
+                      </span>
+                    ) : (
+                      <span className="text-gray-300">-</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5 text-gray-400 italic">
+                    {k.notes || "-"}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <span className="text-xs text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
+                      ✓ {k.payroll_ref || "Payroll"}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── SubProjectDetail Modal ─────────────────────────────────
 function SubProjectDetail({ subProject, project, open, onClose, onUpdated }) {
   const [activeTab, setActiveTab] = useState("billings");
+  const QRIS_FEE_RATE = 0.003;
   const [billingForm, setBillingForm] = useState({
     billing_date: "",
     amount: "",
+    qris_fee: 0,
+    net_amount: 0,
     received_from: "",
     bank_account: "",
     payment_method: "transfer",
@@ -3978,6 +4941,8 @@ function SubProjectDetail({ subProject, project, open, onClose, onUpdated }) {
       setBillingForm({
         billing_date: "",
         amount: "",
+        qris_fee: 0,
+        net_amount: 0,
         received_from: "",
         bank_account: "",
         payment_method: "transfer",
@@ -4002,9 +4967,13 @@ function SubProjectDetail({ subProject, project, open, onClose, onUpdated }) {
     const amt = parseFloat(parseCurrency(billingForm.amount)) || 0;
     if (!billingForm.billing_date) return toast.error("Tanggal required");
     if (!amt) return toast.error("Jumlah required");
+    const isQris = billingForm.payment_method === "qris";
+    const qrisFee = isQris ? Math.round(amt * QRIS_FEE_RATE) : 0;
     createBilling.mutate({
       billing_date: billingForm.billing_date,
       amount: amt,
+      qris_fee: qrisFee,
+      net_amount: amt - qrisFee,
       received_from: billingForm.received_from || null,
       bank_account: billingForm.bank_account || null,
       payment_method: billingForm.payment_method,
@@ -4029,7 +4998,7 @@ function SubProjectDetail({ subProject, project, open, onClose, onUpdated }) {
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col">
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 shrink-0">
           <div>
@@ -4063,7 +5032,7 @@ function SubProjectDetail({ subProject, project, open, onClose, onUpdated }) {
         </div>
 
         {/* Summary cards */}
-        <div className="grid grid-cols-4 gap-3 p-4 border-b border-gray-100 shrink-0">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 border-b border-gray-100 shrink-0">
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-center">
             <div className="text-xs text-blue-500 mb-1">Transfer Masuk</div>
             <div className="text-sm font-bold text-blue-700">
@@ -4071,7 +5040,7 @@ function SubProjectDetail({ subProject, project, open, onClose, onUpdated }) {
             </div>
           </div>
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-center">
-            <div className="text-xs text-amber-500 mb-1">Outstanding</div>
+            <div className="text-xs text-amber-500 mb-1">Sisa RAB</div>
             <div className="text-sm font-bold text-amber-700">
               {formatRupiah(summary.outstanding || 0)}
             </div>
@@ -4148,6 +5117,7 @@ function SubProjectDetail({ subProject, project, open, onClose, onUpdated }) {
             { id: "billings", label: "Transfer Masuk", icon: ArrowDownCircle },
             { id: "workers", label: "Workers", icon: HardHat },
             { id: "po", label: "Purchase Orders", icon: Wallet },
+            { id: "kasbon", label: "Kasbon Tukang", icon: CreditCard },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -4166,6 +5136,10 @@ function SubProjectDetail({ subProject, project, open, onClose, onUpdated }) {
         </div>
 
         <div className="overflow-y-auto flex-1 p-4">
+          {/* ── KASBON TUKANG TAB ── */}
+          {activeTab === "kasbon" && (
+            <WorkerKasbonTab subProjectId={data?.id} />
+          )}
           {/* ── BILLINGS TAB ── */}
           {activeTab === "billings" && (
             <div className="space-y-4">
@@ -4182,13 +5156,13 @@ function SubProjectDetail({ subProject, project, open, onClose, onUpdated }) {
                     onChange={(e) => setB("billing_date", e.target.value)}
                   />
                   <CurrencyInput
-                    label="Jumlah *"
+                    label="Jumlah Transfer *"
                     value={billingForm.amount}
                     onChange={(v) => setB("amount", v)}
                     placeholder="0"
                   />
                   <Input
-                    label="Dari (Owner/Klien)"
+                    label="Dari"
                     value={billingForm.received_from}
                     onChange={(e) => setB("received_from", e.target.value)}
                     placeholder="Nama owner / klien"
@@ -4206,7 +5180,7 @@ function SubProjectDetail({ subProject, project, open, onClose, onUpdated }) {
                     ))}
                   </Select>
                   <Select
-                    label="Metode"
+                    label="Metode Pembayaran"
                     value={billingForm.payment_method}
                     onChange={(e) => setB("payment_method", e.target.value)}
                   >
@@ -4223,6 +5197,49 @@ function SubProjectDetail({ subProject, project, open, onClose, onUpdated }) {
                     placeholder="optional"
                   />
                 </div>
+
+                {/* QRIS fee preview */}
+                {billingForm.payment_method === "qris" &&
+                  billingForm.amount &&
+                  (() => {
+                    const gross =
+                      parseFloat(parseCurrency(billingForm.amount)) || 0;
+                    const fee = Math.round(gross * QRIS_FEE_RATE);
+                    const net = gross - fee;
+                    return (
+                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-1.5">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <AlertCircle size={12} className="text-amber-500" />
+                          <span className="text-xs font-semibold text-amber-700">
+                            Potongan QRIS 0.3%
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-gray-500">Total Transfer</span>
+                          <span className="font-medium">
+                            {formatRupiah(gross)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-red-500">
+                            Potongan QRIS (0.3%)
+                          </span>
+                          <span className="text-red-600 font-medium">
+                            - {formatRupiah(fee)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-xs border-t border-amber-200 pt-1.5">
+                          <span className="font-semibold text-emerald-700">
+                            Yang masuk ke kas
+                          </span>
+                          <span className="font-bold text-emerald-700">
+                            {formatRupiah(net)}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                 <Button
                   type="button"
                   variant="primary"
@@ -4259,6 +5276,9 @@ function SubProjectDetail({ subProject, project, open, onClose, onUpdated }) {
                         <th className="text-left px-3 py-2.5 font-medium text-gray-500">
                           Bank
                         </th>
+                        <th className="text-left px-3 py-2.5 font-medium text-gray-500">
+                          Metode Pembayaran
+                        </th>
                         <th className="text-right px-3 py-2.5 font-medium text-gray-500">
                           Jumlah
                         </th>
@@ -4270,55 +5290,105 @@ function SubProjectDetail({ subProject, project, open, onClose, onUpdated }) {
                         .sort((a, b) =>
                           b.billing_date.localeCompare(a.billing_date),
                         )
-                        .map((b) => (
-                          <tr key={b.id} className="hover:bg-gray-50 group">
-                            <td className="px-3 py-2.5 text-gray-700">
-                              {formatDate(b.billing_date)}
-                            </td>
-                            <td className="px-3 py-2.5 text-gray-600">
-                              {b.received_from || "-"}
-                            </td>
-                            <td className="px-3 py-2.5">
-                              {b.bank_account ? (
-                                <span className="bg-gray-100 text-gray-700 rounded px-1.5 py-0.5">
-                                  {b.bank_account}
-                                </span>
-                              ) : (
-                                <span className="text-gray-300">-</span>
-                              )}
-                            </td>
-                            <td className="px-3 py-2.5 text-right font-semibold text-emerald-700">
-                              {formatRupiah(b.amount)}
-                            </td>
-                            <td className="px-3 py-2.5 text-center">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (confirm("Hapus transfer ini?"))
-                                    deleteBilling.mutate(b.id);
-                                }}
-                                className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
-                              >
-                                <X size={13} />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
+                        .map((b) => {
+                          const amount = parseFloat(b.amount || 0);
+                          const qrisFee = parseFloat(b.qris_fee || 0);
+                          const netAmount = parseFloat(b.net_amount || 0);
+                          const displayAmount =
+                            b.payment_method === "qris"
+                              ? netAmount > 0
+                                ? netAmount
+                                : amount - qrisFee
+                              : b.net_amount != null
+                                ? netAmount
+                                : amount;
+                          return (
+                            <tr key={b.id} className="hover:bg-gray-50 group">
+                              <td className="px-3 py-2.5 text-gray-700">
+                                {formatDate(b.billing_date)}
+                              </td>
+                              <td className="px-3 py-2.5 text-gray-600">
+                                {b.received_from || "-"}
+                              </td>
+                              <td className="px-3 py-2.5">
+                                {b.bank_account ? (
+                                  <span className="bg-gray-100 text-gray-700 rounded px-1.5 py-0.5">
+                                    {b.bank_account}
+                                  </span>
+                                ) : (
+                                  <span className="text-gray-300">-</span>
+                                )}
+                              </td>
+                              <td className="px-3 py-2.5">
+                                {b.payment_method ? (
+                                  <span className="bg-gray-100 text-gray-700 rounded px-1.5 py-0.5">
+                                    {b.payment_method === "transfer"
+                                      ? "Bank Transfer"
+                                      : b.payment_method === "qris"
+                                        ? "QRIS"
+                                        : b.payment_method === "cash"
+                                          ? "Cash"
+                                          : "-"}
+                                  </span>
+                                ) : (
+                                  <span className="text-gray-300">-</span>
+                                )}
+                              </td>
+                              <td className="px-3 py-2.5 text-right">
+                                <div className="font-bold text-emerald-700">
+                                  {formatRupiah(displayAmount)}
+                                </div>
+                                {parseFloat(b.qris_fee || 0) > 0 && (
+                                  <>
+                                    <div className="text-xs text-red-400">
+                                      -{formatRupiah(b.qris_fee)} QRIS
+                                    </div>
+                                    <div className="text-xs text-gray-400 line-through">
+                                      {formatRupiah(b.amount)}
+                                    </div>
+                                  </>
+                                )}
+                              </td>
+                              <td className="px-3 py-2.5 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (confirm("Hapus transfer ini?"))
+                                      deleteBilling.mutate(b.id);
+                                  }}
+                                  className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                                >
+                                  <X size={13} />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
                     </tbody>
                     <tfoot>
                       <tr className="bg-emerald-50 border-t-2 border-emerald-200">
                         <td
-                          colSpan={3}
+                          colSpan={4}
                           className="px-3 py-2.5 text-xs font-semibold text-emerald-700"
                         >
                           Total ({billings.length} transfer)
                         </td>
                         <td className="px-3 py-2.5 text-right font-bold text-emerald-700">
                           {formatRupiah(
-                            billings.reduce(
-                              (s, b) => s + parseFloat(b.amount || 0),
-                              0,
-                            ),
+                            billings.reduce((s, b) => {
+                              const amount = parseFloat(b.amount || 0);
+                              const qrisFee = parseFloat(b.qris_fee || 0);
+                              const netAmount = parseFloat(b.net_amount || 0);
+                              const displayAmount =
+                                b.payment_method === "qris"
+                                  ? netAmount > 0
+                                    ? netAmount
+                                    : amount - qrisFee
+                                  : b.net_amount != null
+                                    ? netAmount
+                                    : amount;
+                              return s + displayAmount;
+                            }, 0),
                           )}
                         </td>
                         <td />
@@ -4327,6 +5397,8 @@ function SubProjectDetail({ subProject, project, open, onClose, onUpdated }) {
                   </table>
                 </div>
               )}
+              {/* Kasbon Kontraktor */}
+              <ContractorKasbonSection subProjectId={data?.id} />
             </div>
           )}
 
@@ -4336,9 +5408,7 @@ function SubProjectDetail({ subProject, project, open, onClose, onUpdated }) {
           )}
 
           {/* ── PURCHASE ORDERS TAB ── */}
-          {activeTab === "po" && (
-            <SubProjectPurchaseOrders subProject={data} />
-          )}
+          {activeTab === "po" && <SubProjectPurchaseOrders subProject={data} />}
         </div>
       </div>
     </div>
@@ -4726,8 +5796,9 @@ function TabSubProjects({ project }) {
                               value={
                                 editingSP.rab_value
                                   ? new Intl.NumberFormat("id-ID").format(
-                                      parseCurrency(
-                                        String(editingSP.rab_value),
+                                      String(editingSP.rab_value).replace(
+                                        /\D/g,
+                                        "",
                                       ),
                                     )
                                   : ""
@@ -4912,7 +5983,14 @@ function TabSubProjects({ project }) {
                           </button>
                           <button
                             type="button"
-                            onClick={() => setEditingSP({ ...sp })}
+                            onClick={() =>
+                              setEditingSP({
+                                ...sp,
+                                rab_value: sp.rab_value
+                                  ? String(Math.round(parseFloat(sp.rab_value)))
+                                  : "",
+                              })
+                            }
                             className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-all"
                           >
                             <Pencil size={13} />
@@ -5139,7 +6217,7 @@ function ProjectDetail({ project, open, onClose, onSave, saving, onRefresh }) {
                 </div>
                 <div className="text-right">
                   <div className="text-xs text-gray-400 font-medium uppercase tracking-wide">
-                    Outstanding
+                    Sisa RAB
                   </div>
                   <div className="text-sm font-bold text-red-500">
                     {project.total_outstanding != null

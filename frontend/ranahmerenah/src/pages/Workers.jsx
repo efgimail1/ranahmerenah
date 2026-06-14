@@ -12,43 +12,77 @@ import toast from 'react-hot-toast'
 
 // ─── Role & Rate config ────────────────────────────────────
 const ROLE_OPTIONS = [
-  { value: 'foreman', label: 'Mandor' },
-  { value: 'deputy_foreman', label: 'Wakil Mandor' },
-  { value: 'carpenter', label: 'Tukang Kayu' },
-  { value: 'helper', label: 'Kenek' },
-  { value: 'furniture_maker', label: 'Tukang Meubel' },
-  { value: 'bricklayer', label: 'Tukang Batu' },
-  { value: 'painter', label: 'Tukang Cat' },
-  { value: 'electrician', label: 'Elektrisi' },
-  { value: 'plumber', label: 'Tukang Ledeng' },
-  { value: 'other', label: 'Lainnya' },
+  { value: 'foreman',            label: 'Mandor' },
+  { value: 'sub_foreman',        label: 'Wakil Mandor' },
+  { value: 'carpenter',          label: 'Tukang Kayu' },
+  { value: 'bricklayer',         label: 'Tukang Batu' },
+  { value: 'bricklayer_general', label: 'Tukang Bangunan' },
+  { value: 'helper',             label: 'Kenek' },
+  { value: 'furniture_maker',    label: 'Tukang Meubel' },
+  { value: 'painter',            label: 'Tukang Cat' },
+  { value: 'electrician',        label: 'Elektrisi' },
+  { value: 'plumber',            label: 'Tukang Ledeng' },
+  { value: 'other',              label: 'Lainnya' },
 ]
 
 const ROLE_COLOR = {
-  foreman: 'amber',
-  deputy_foreman: 'amber',
-  carpenter: 'blue',
-  helper: 'gray',
-  furniture_maker: 'green',
-  bricklayer: 'gray',
-  painter: 'blue',
-  electrician: 'amber',
-  plumber: 'blue',
-  other: 'gray',
+  foreman:            'amber',
+  sub_foreman:        'amber',
+  carpenter:          'blue',
+  bricklayer:         'gray',
+  bricklayer_general: 'gray',
+  helper:             'gray',
+  furniture_maker:    'green',
+  painter:            'blue',
+  electrician:        'amber',
+  plumber:            'blue',
+  other:              'gray',
 }
+
+const RATE_TYPE_OPTIONS = [
+  { value: 'daily',    label: 'Harian (full day)' },
+  { value: 'per_unit', label: 'Per Unit / Borongan' },
+  { value: 'fixed',    label: 'Fixed / Lump Sum' },
+]
 
 // ─── Form ──────────────────────────────────────────────────
 function WorkerForm({ initial, onSubmit, loading }) {
-  const [form, setForm] = useState(initial || {
-    full_name: '', phone: '', role: 'carpenter', is_active: true, notes: ''
+  const [form, setForm] = useState(initial ? {
+    full_name:   initial.full_name   || '',
+    phone:       initial.phone       || '',
+    role:        initial.role        || 'carpenter',
+    rate_type:   initial.rate_type   || 'daily',
+    rate_amount: initial.rate_amount ? String(Math.round(parseFloat(initial.rate_amount))) : '',
+    is_active:   initial.is_active   ?? true,
+    notes:       initial.notes       || '',
+  } : {
+    full_name: '', phone: '', role: 'carpenter',
+    rate_type: 'daily', rate_amount: '', is_active: true, notes: '',
   })
   const set = (f, v) => setForm(p => ({ ...p, [f]: v }))
 
+  const rateLabel = {
+    daily:    'Rate Harian (Rp/hari)',
+    per_unit: 'Rate per Unit (Rp/unit)',
+    fixed:    'Total Fixed (Rp)',
+  }
+
+  const rateHint = {
+    daily:    'Dibayar per hari kerja penuh.',
+    per_unit: 'Dibayar berdasarkan jumlah unit yang dikerjakan (borongan).',
+    fixed:    'Dibayar satu kali saat pekerjaan selesai (lump sum).',
+  }
+
   return (
-    <form onSubmit={e => { e.preventDefault(); onSubmit(form) }} className="space-y-4">
+    <form onSubmit={e => { e.preventDefault(); onSubmit({
+      ...form,
+      rate_amount: parseFloat(String(form.rate_amount).replace(/\D/g,'')) || 0,
+    })}} className="space-y-4">
+
       <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-widest">
         Info Tukang
       </h4>
+
       <div className="grid grid-cols-2 gap-3">
         <Input label="Full Name *" value={form.full_name}
           onChange={e => set('full_name', e.target.value)}
@@ -58,32 +92,58 @@ function WorkerForm({ initial, onSubmit, loading }) {
           placeholder="contoh: 08123456789" />
         <Select label="Role *" value={form.role}
           onChange={e => set('role', e.target.value)}>
-          <option value="foreman">Mandor</option>
-          <option value="deputy_foreman">Wakil Mandor</option>
-          <option value="carpenter">Tukang Kayu</option>
-          <option value="helper">Kenek</option>
-          <option value="furniture_maker">Tukang Meubel</option>
-          <option value="bricklayer">Tukang Batu</option>
-          <option value="painter">Tukang Cat</option>
-          <option value="electrician">Elektrisi</option>
-          <option value="plumber">Tukang Ledeng</option>
-          <option value="other">Lainnya</option>
+          {ROLE_OPTIONS.map(r => (
+            <option key={r.value} value={r.value}>{r.label}</option>
+          ))}
         </Select>
         <Select label="Status" value={form.is_active}
           onChange={e => set('is_active', e.target.value === 'true')}>
           <option value="true">Active</option>
           <option value="false">Inactive</option>
         </Select>
-        <Input label="Notes" value={form.notes}
-          onChange={e => set('notes', e.target.value)}
-          placeholder="optional" className="col-span-2" />
       </div>
-      <p className="text-xs text-blue-600 bg-blue-50 border border-blue-100 rounded-lg p-3">
-        Rate upah ditentukan per proyek saat assign tukang ke proyek.
-      </p>
+
+      {/* Rate Section */}
+      <div className="border border-gray-200 rounded-xl p-4 space-y-3 bg-gray-50">
+        <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-widest">
+          Rate Upah Default
+        </h4>
+        <div className="grid grid-cols-2 gap-3">
+          <Select label="Jenis Pembayaran *" value={form.rate_type}
+            onChange={e => set('rate_type', e.target.value)}>
+            {RATE_TYPE_OPTIONS.map(r => (
+              <option key={r.value} value={r.value}>{r.label}</option>
+            ))}
+          </Select>
+          <div>
+            <label className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1 block">
+              {rateLabel[form.rate_type] || 'Rate (Rp)'}
+            </label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">Rp</span>
+              <input
+                type="text" inputMode="numeric"
+                value={form.rate_amount ? new Intl.NumberFormat('id-ID').format(String(form.rate_amount).replace(/\D/g,'')) : ''}
+                onChange={e => set('rate_amount', e.target.value.replace(/\D/g,''))}
+                placeholder="0"
+                className="w-full pl-8 pr-3 py-2.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+              />
+            </div>
+          </div>
+        </div>
+        <p className="text-xs text-blue-600 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+          ℹ {rateHint[form.rate_type]}
+          {' '}Rate ini bisa di-override saat assign ke proyek tertentu.
+        </p>
+      </div>
+
+      <Input label="Notes" value={form.notes}
+        onChange={e => set('notes', e.target.value)}
+        placeholder="optional" />
+
       <div className="flex justify-end pt-2 border-t border-gray-100">
         <Button type="submit" variant="primary" loading={loading}>
-          {initial ? 'Save Changes' : 'Save Worker'}
+          {initial ? 'Simpan Perubahan' : 'Tambah Tukang'}
         </Button>
       </div>
     </form>
@@ -151,11 +211,22 @@ function WorkerCard({ worker, onEdit, onDelete }) {
 
       {/* Rate */}
       <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
-        <span className="text-xs text-gray-400">
+        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+          worker.rate_type === 'fixed'
+            ? 'bg-orange-50 text-orange-600'
+            : worker.rate_type === 'per_unit'
+            ? 'bg-blue-50 text-blue-600'
+            : 'bg-gray-100 text-gray-500'
+        }`}>
           {RATE_TYPE[worker.rate_type] || worker.rate_type}
         </span>
         <span className="text-sm font-semibold text-gray-900">
           {formatRupiah(worker.rate_amount)}
+          <span className="text-xs font-normal text-gray-400 ml-1">
+            {worker.rate_type === 'daily'    && '/hari'}
+            {worker.rate_type === 'per_unit' && '/unit'}
+            {worker.rate_type === 'fixed'    && ' (lump sum)'}
+          </span>
         </span>
       </div>
 
@@ -239,7 +310,7 @@ export default function Workers() {
     ? workers.filter(w => w.role === filterRole)
     : workers
 
-  // group by role
+  // group by role — gunakan ROLE_OPTIONS yang sudah include role baru
   const grouped = ROLE_OPTIONS.reduce((acc, role) => {
     const list = filtered.filter(w => w.role === role.value)
     if (list.length > 0) acc[role.value] = { label: role.label, workers: list }

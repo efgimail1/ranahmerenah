@@ -14,8 +14,7 @@ import {
 } from "../utils/format";
 import {
   Plus, Pencil, Trash2, Package, Receipt, Search,
-  ChevronDown, ChevronUp, X, Building2, 
-  FileText,  Layers, AlertCircle,
+  ChevronDown, ChevronUp, X, Building2,  FileText,  Layers, AlertCircle,
   BarChart3, ShoppingCart,
 } from "lucide-react";
 import toast from "react-hot-toast";
@@ -23,17 +22,13 @@ import toast from "react-hot-toast";
 const UNIT_OPTIONS = [
   "pcs","m²","m³","m","sak","batang","lembar","roll","set","unit","kg","liter","dus","lonjor","lainnya",
 ];
-const PAID_BY_OPTIONS = [
-  { value: "architect", label: "Arsitek (Saya)" },
-  { value: "owner",     label: "Pemilik Proyek" },
-  { value: "other",     label: "Lainnya" },
-];
+
 const RECEIPT_TYPE_OPTIONS = [
   { value: "physical", label: "Physical" },
   { value: "digital",  label: "Digital" },
   { value: "both",     label: "Both" },
 ];
-const paidByLabel  = { architect: "Arsitek", owner: "Pemilik", other: "Lainnya" };
+
 const receiptLabel = { physical: "Physical", digital: "Digital", both: "Both" };
 
 let _keyCounter = 0;
@@ -209,7 +204,7 @@ function ItemRow({ item, index, onChange, onRemove, catalog }) {
 function PurchaseOrderForm({ initial, onSubmit, loading, projects, suppliers, catalog }) {
   const emptyHeader = {
     project_id:"", sub_project_id:"", supplier_id:"", purchase_date:"",
-    is_paid:"false", paid_by:"architect",
+    is_paid:"false", paid_by:"",
     has_receipt:"false", receipt_type:"physical", notes:"",
   };
 
@@ -375,9 +370,13 @@ function PurchaseOrderForm({ initial, onSubmit, loading, projects, suppliers, ca
             </div>
             <div>
               <label className={fLabel}>Dibayar Oleh</label>
-              <select value={header.paid_by} onChange={e=>setH("paid_by",e.target.value)} className={fInput}>
-                {PAID_BY_OPTIONS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
+              <input
+                type="text"
+                value={header.paid_by}
+                onChange={e=>setH("paid_by", e.target.value)}
+                placeholder="e.g. Arsitek, Pak Budi, PT ABC..."
+                className={fInput}
+              />
             </div>
           </div>
 
@@ -516,6 +515,261 @@ function PurchaseOrderForm({ initial, onSubmit, loading, projects, suppliers, ca
       </div>
     </form>
   );
+}
+
+// ─── Expanded PO Detail (tabs: items + payments) ──────────
+function ExpandedPODetail({ order, onRefresh }) {
+  const qc = useQueryClient()
+  const [tab, setTab] = useState("items")
+  const [payForm, setPayForm] = useState({
+    payment_date: new Date().toISOString().split("T")[0],
+    amount: "", paid_by: "", bank_account: "", payment_method: "transfer", notes: "",
+  })
+  const setPF = (k, v) => setPayForm(p => ({ ...p, [k]: v }))
+
+  const { data: payments = [], refetch } = useQuery({
+    queryKey: ["po-payments", order.id],
+    queryFn: () => materialsApi.getPOPayments(order.id),
+  })
+
+  const addPayment = useMutation({
+    mutationFn: (data) => materialsApi.addPOPayment(order.id, data),
+    onSuccess: () => {
+      refetch()
+      qc.invalidateQueries({ queryKey: ["purchase-orders"] })
+      onRefresh()
+      setPayForm({ payment_date: new Date().toISOString().split("T")[0],
+        amount: "", paid_by: "", bank_account: "", payment_method: "transfer", notes: "" })
+      toast.success("Pembayaran dicatat!")
+    },
+    onError: e => toast.error(e.message),
+  })
+
+  const delPayment = useMutation({
+    mutationFn: (payId) => materialsApi.deletePOPayment(order.id, payId),
+    onSuccess: () => {
+      refetch()
+      qc.invalidateQueries({ queryKey: ["purchase-orders"] })
+      onRefresh()
+      toast.success("Pembayaran dihapus.")
+    },
+  })
+
+  const totalPaid  = payments.reduce((s, p) => s + parseFloat(p.amount || 0), 0)
+  const totalNet   = parseFloat(order.total_net || 0)
+  const remaining  = totalNet - totalPaid
+  const pctPaid    = totalNet > 0 ? Math.min(100, (totalPaid / totalNet) * 100) : 0
+
+  const handleAddPayment = () => {
+    const amt = parseFloat(String(payForm.amount).replace(/\D/g, "")) || 0
+    if (!amt) return toast.error("Jumlah pembayaran harus diisi")
+    if (!payForm.payment_date) return toast.error("Tanggal harus diisi")
+    addPayment.mutate({ ...payForm, amount: amt })
+  }
+
+  const fI = "text-xs border border-gray-200 rounded-lg px-2.5 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 w-full"
+
+  return (
+    <div className="border-t border-gray-100">
+      {/* Tab bar */}
+      <div className="flex items-center gap-1 px-4 pt-3 pb-0 bg-gray-50/50 border-b border-gray-100">
+        {[
+          { key: "items",    label: `Order Lines (${order.items?.length || 0})` },
+          { key: "payments", label: `Pembayaran (${payments.length})` },
+        ].map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)}
+            className={`px-3 py-1.5 text-xs font-medium rounded-t-lg transition-all ${
+              tab === t.key
+                ? "bg-white text-gray-900 border border-b-white border-gray-200 -mb-px z-10"
+                : "text-gray-500 hover:text-gray-700"
+            }`}>
+            {t.label}
+          </button>
+        ))}
+        {/* Payment status pill */}
+        <div className="ml-auto pr-2 pb-1.5">
+          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+            order.payment_status === "paid"    ? "bg-emerald-100 text-emerald-700" :
+            order.payment_status === "partial" ? "bg-blue-100 text-blue-700" :
+                                                 "bg-red-100 text-red-600"
+          }`}>
+            {order.payment_status === "paid"    ? "✓ Lunas" :
+             order.payment_status === "partial" ? `⋯ Partial — ${formatRupiah(totalPaid)} / ${formatRupiah(totalNet)}` :
+                                                  "Belum Dibayar"}
+          </span>
+        </div>
+      </div>
+
+      {/* ── Items tab ── */}
+      {tab === "items" && (
+        <div className="bg-white">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-gray-100 bg-gray-50">
+                <th className="text-center px-3 py-2 font-medium text-gray-400 w-8">#</th>
+                <th className="text-left px-4 py-2 font-medium text-gray-400">Item</th>
+                <th className="text-right px-4 py-2 font-medium text-gray-400 w-16">Qty</th>
+                <th className="text-left px-3 py-2 font-medium text-gray-400 w-12">Unit</th>
+                <th className="text-right px-4 py-2 font-medium text-gray-400 w-28">Harga/Unit</th>
+                <th className="text-right px-4 py-2 font-medium text-gray-400 w-24">Disc/Unit</th>
+                <th className="text-right px-4 py-2 font-medium text-gray-400 w-28">Subtotal</th>
+                <th className="text-right px-4 py-2 font-medium text-gray-400 w-28">Net</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {order.items?.map((item, i) => (
+                <tr key={item.id} className="hover:bg-gray-50">
+                  <td className="px-3 py-2.5 text-center text-gray-400">{i+1}</td>
+                  <td className="px-4 py-2.5 font-medium text-gray-800">{item.item_name}</td>
+                  <td className="px-4 py-2.5 text-right text-gray-600">{parseFloat(item.quantity)}</td>
+                  <td className="px-3 py-2.5 text-gray-500">{item.unit}</td>
+                  <td className="px-4 py-2.5 text-right text-gray-600">{formatRupiah(item.unit_price)}</td>
+                  <td className="px-4 py-2.5 text-right">
+                    {parseFloat(item.discount_per_unit) > 0
+                      ? <span className="text-emerald-600">{formatRupiah(item.discount_per_unit)}</span>
+                      : <span className="text-gray-300">-</span>}
+                  </td>
+                  <td className="px-4 py-2.5 text-right text-gray-600">{formatRupiah(item.subtotal_gross)}</td>
+                  <td className="px-4 py-2.5 text-right font-semibold text-gray-900">{formatRupiah(item.subtotal_net)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-gray-200 bg-gray-50">
+                <td colSpan={6} className="px-4 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase">Total</td>
+                <td className="px-4 py-2.5 text-right font-semibold text-gray-700">{formatRupiah(order.total_gross)}</td>
+                <td className="px-4 py-2.5 text-right font-bold text-emerald-700">{formatRupiah(order.total_net)}</td>
+              </tr>
+              {parseFloat(order.total_discount) > 0 && (
+                <tr className="bg-emerald-50">
+                  <td colSpan={7} className="px-4 py-2 text-right text-xs text-emerald-600">Discount Profit</td>
+                  <td className="px-4 py-2 text-right text-xs font-semibold text-emerald-700">+{formatRupiah(order.total_discount)}</td>
+                </tr>
+              )}
+            </tfoot>
+          </table>
+          {order.notes && (
+            <div className="px-4 py-2.5 border-t border-gray-100 bg-amber-50">
+              <span className="text-xs text-amber-600 font-medium">Notes: </span>
+              <span className="text-xs text-amber-800 italic">{order.notes}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Payments tab ── */}
+      {tab === "payments" && (
+        <div className="bg-white">
+          {/* Progress bar */}
+          <div className="px-4 pt-3 pb-2 border-b border-gray-100">
+            <div className="flex justify-between text-xs text-gray-500 mb-1.5">
+              <span>Terbayar: <strong className="text-gray-800">{formatRupiah(totalPaid)}</strong></span>
+              <span>Total PO: <strong className="text-gray-800">{formatRupiah(totalNet)}</strong></span>
+              {remaining > 0 && <span className="text-red-500">Sisa: <strong>{formatRupiah(remaining)}</strong></span>}
+            </div>
+            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${pctPaid >= 100 ? "bg-emerald-500" : "bg-blue-500"}`}
+                style={{ width: `${pctPaid}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Payment history */}
+          {payments.length > 0 && (
+            <table className="w-full text-xs">
+              <thead className="bg-gray-50 border-b border-gray-100">
+                <tr>
+                  <th className="text-left px-4 py-2 font-medium text-gray-400 w-24">Tanggal</th>
+                  <th className="text-left px-3 py-2 font-medium text-gray-400">Dibayar Oleh</th>
+                  <th className="text-left px-3 py-2 font-medium text-gray-400 w-20">Bank</th>
+                  <th className="text-left px-3 py-2 font-medium text-gray-400 w-24">Metode</th>
+                  <th className="text-right px-3 py-2 font-medium text-gray-400 w-32">Jumlah</th>
+                  <th className="text-left px-3 py-2 font-medium text-gray-400">Catatan</th>
+                  <th className="w-8"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {payments.map(p => (
+                  <tr key={p.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-2.5 text-gray-600">{formatDate(p.payment_date)}</td>
+                    <td className="px-3 py-2.5 font-medium text-gray-800">{p.paid_by || "-"}</td>
+                    <td className="px-3 py-2.5 text-gray-500">{p.bank_account || "-"}</td>
+                    <td className="px-3 py-2.5 text-gray-500 capitalize">{p.payment_method || "-"}</td>
+                    <td className="px-3 py-2.5 text-right font-bold text-emerald-700">{formatRupiah(p.amount)}</td>
+                    <td className="px-3 py-2.5 text-gray-400 italic">{p.notes || ""}</td>
+                    <td className="px-2 py-2.5 text-center">
+                      <button onClick={() => {
+                        if (confirm("Hapus pembayaran ini?")) delPayment.mutate(p.id)
+                      }} className="p-1 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded">
+                        <Trash2 size={11}/>
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {/* Add payment form */}
+          {remaining > 0 || payments.length === 0 ? (
+            <div className="px-4 py-3 border-t border-gray-100 bg-blue-50/30">
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                + Catat Pembayaran
+                {remaining > 0 && <span className="ml-2 text-blue-500 normal-case font-normal">Sisa {formatRupiah(remaining)}</span>}
+              </div>
+              <div className="grid grid-cols-6 gap-2 items-end">
+                <div>
+                  <div className="text-xs text-gray-400 mb-1">Tanggal *</div>
+                  <input type="date" value={payForm.payment_date}
+                    onChange={e => setPF("payment_date", e.target.value)} className={fI}/>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-400 mb-1">Jumlah *</div>
+                  <div className="relative">
+                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">Rp</span>
+                    <input type="text" inputMode="numeric"
+                      value={payForm.amount ? new Intl.NumberFormat("id-ID").format(String(payForm.amount).replace(/\D/g,"")) : ""}
+                      onChange={e => setPF("amount", e.target.value.replace(/\D/g,""))}
+                      placeholder="0" className={`${fI} pl-7`}/>
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-400 mb-1">Dibayar Oleh</div>
+                  <input type="text" value={payForm.paid_by}
+                    onChange={e => setPF("paid_by", e.target.value)}
+                    placeholder="Nama / perusahaan" className={fI}/>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-400 mb-1">Bank</div>
+                  <input type="text" value={payForm.bank_account}
+                    onChange={e => setPF("bank_account", e.target.value)}
+                    placeholder="BCA, Mandiri..." className={fI}/>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-400 mb-1">Catatan</div>
+                  <input type="text" value={payForm.notes}
+                    onChange={e => setPF("notes", e.target.value)}
+                    placeholder="optional" className={fI}/>
+                </div>
+                <div>
+                  <button onClick={handleAddPayment}
+                    disabled={addPayment.isPending}
+                    className="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg transition-all disabled:opacity-50">
+                    {addPayment.isPending ? "..." : "Simpan"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="px-4 py-3 bg-emerald-50 border-t border-emerald-100">
+              <p className="text-xs text-emerald-600 font-medium text-center">✓ PO ini sudah lunas</p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 // ─── Material Report ─────────────────────────────────────────
@@ -1093,7 +1347,7 @@ export default function Materials() {
                   <div className="text-sm text-gray-600">{formatDate(order.purchase_date)}</div>
 
                   {/* Paid By */}
-                  <div className="text-sm text-gray-600">{paidByLabel[order.paid_by]||"-"}</div>
+                  <div className="text-sm text-gray-600">{order.paid_by || "-"}</div>
 
                   {/* Receipt */}
                   <div>
@@ -1105,10 +1359,19 @@ export default function Materials() {
                   {/* Status */}
                   <div className="text-center">
                     <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${
-                      order.is_paid ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-600"
+                      order.payment_status === "paid"    ? "bg-emerald-100 text-emerald-700" :
+                      order.payment_status === "partial" ? "bg-blue-100 text-blue-700" :
+                                                           "bg-red-100 text-red-600"
                     }`}>
-                      {order.is_paid ? "Paid" : "Unpaid"}
+                      {order.payment_status === "paid"    ? "✓ Paid" :
+                       order.payment_status === "partial" ? "⋯ Partial" :
+                                                            "Unpaid"}
                     </span>
+                    {order.payment_status === "partial" && (
+                      <div className="text-xs text-blue-500 mt-0.5">
+                        {formatRupiah(order.total_paid)} / {formatRupiah(order.total_net)}
+                      </div>
+                    )}
                   </div>
 
                   {/* Invoice */}
@@ -1140,61 +1403,9 @@ export default function Materials() {
                   </div>
                 </div>
 
-                {/* Expanded Order Lines */}
-                {isExp&&(
-                  <div className="border-t border-gray-100 bg-gray-50/50">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-gray-100">
-                          <th className="text-center px-3 py-2 text-xs font-medium text-gray-400 w-8">#</th>
-                          <th className="text-left px-4 py-2 text-xs font-medium text-gray-400">Item</th>
-                          <th className="text-right px-4 py-2 text-xs font-medium text-gray-400 w-20">Qty</th>
-                          <th className="text-left px-3 py-2 text-xs font-medium text-gray-400 w-16">Unit</th>
-                          <th className="text-right px-4 py-2 text-xs font-medium text-gray-400 w-32">Harga Satuan</th>
-                          <th className="text-right px-4 py-2 text-xs font-medium text-gray-400 w-28">Diskon/Unit</th>
-                          <th className="text-right px-4 py-2 text-xs font-medium text-gray-400 w-32">Subtotal Bon</th>
-                          <th className="text-right px-4 py-2 text-xs font-medium text-gray-400 w-32">Dibayar</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-50">
-                        {order.items?.map((item,i)=>(
-                          <tr key={item.id} className="hover:bg-white transition-colors">
-                            <td className="px-3 py-2 text-center text-xs text-gray-400">{i+1}</td>
-                            <td className="px-4 py-2 font-medium text-gray-800">{item.item_name}</td>
-                            <td className="px-4 py-2 text-right text-gray-600">{parseFloat(item.quantity)}</td>
-                            <td className="px-3 py-2 text-gray-500">{item.unit}</td>
-                            <td className="px-4 py-2 text-right text-gray-600">{formatRupiah(item.unit_price)}</td>
-                            <td className="px-4 py-2 text-right">
-                              {parseFloat(item.discount_per_unit)>0
-                                ? <span className="text-emerald-600 font-medium">{formatRupiah(item.discount_per_unit)}</span>
-                                : <span className="text-gray-300">-</span>}
-                            </td>
-                            <td className="px-4 py-2 text-right text-gray-700">{formatRupiah(item.subtotal_gross)}</td>
-                            <td className="px-4 py-2 text-right font-semibold text-gray-900">{formatRupiah(item.subtotal_net)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr className="border-t-2 border-gray-200 bg-white">
-                          <td colSpan={6} className="px-4 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Total</td>
-                          <td className="px-4 py-2.5 text-right font-semibold text-gray-700">{formatRupiah(order.total_gross)}</td>
-                          <td className="px-4 py-2.5 text-right font-bold text-emerald-700">{formatRupiah(order.total_net)}</td>
-                        </tr>
-                        {parseFloat(order.total_discount)>0&&(
-                          <tr className="bg-emerald-50">
-                            <td colSpan={7} className="px-4 py-2 text-right text-xs text-emerald-600">Discount Profit dari supplier</td>
-                            <td className="px-4 py-2 text-right text-xs font-semibold text-emerald-700">+{formatRupiah(order.total_discount)}</td>
-                          </tr>
-                        )}
-                      </tfoot>
-                    </table>
-                    {order.notes&&(
-                      <div className="px-4 py-2.5 border-t border-gray-100 bg-amber-50">
-                        <span className="text-xs text-amber-600 font-medium">Notes: </span>
-                        <span className="text-xs text-amber-800 italic">{order.notes}</span>
-                      </div>
-                    )}
-                  </div>
+                {/* Expanded: tabbed view — Order Lines + Payments */}
+                {isExp && (
+                  <ExpandedPODetail order={order} onRefresh={inv} />
                 )}
               </div>
             );

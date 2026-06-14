@@ -25,4 +25,21 @@ export const subProjectsApi = {
 
   deleteBilling: (spId, billingId) =>
     api.delete(`/sub-projects/${spId}/billings/${billingId}`),
+
+    // Kasbon Tukang
+  getKasbons:    (spId)        => api.get(`/sub-projects/${spId}/kasbons`).then(r => r.data),
+  createKasbon:  (spId, data)  => api.post(`/sub-projects/${spId}/kasbons`, data).then(r => r.data),
+  deleteKasbon:  (spId, id)    => api.delete(`/sub-projects/${spId}/kasbons/${id}`),
+
+  // Kasbon Kontraktor
+  getContractorKasbons:   (spId)       => api.get(`/sub-projects/${spId}/contractor-kasbons`).then(r => r.data),
+  createContractorKasbon: (spId, data) => api.post(`/sub-projects/${spId}/contractor-kasbons`, data).then(r => r.data),
+  deleteContractorKasbon: (spId, id)   => api.delete(`/sub-projects/${spId}/contractor-kasbons/${id}`),
+
+
+  // Worker Kasbons
+  getWorkerKasbons: (spId, status) => api.get(`/sub-projects/${spId}/worker-kasbons`, { params: status ? { kasbon_status: status } : {}}).then(r => r.data),
+  createWorkerKasbon:  (spId, data)      => api.post(`/sub-projects/${spId}/worker-kasbons`, data).then(r => r.data),
+  updateWorkerKasbon:  (spId, id, data)  => api.patch(`/sub-projects/${spId}/worker-kasbons/${id}`, data).then(r => r.data),
+  deleteWorkerKasbon:  (spId, id)        => api.delete(`/sub-projects/${spId}/worker-kasbons/${id}`),
 }

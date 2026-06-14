@@ -2,7 +2,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 from datetime import date
 from decimal import Decimal
-from app.models.material import PaymentBy, ReceiptType
+from app.models.material import ReceiptType
 
 
 # ─── Item Catalog ──────────────────────────────────────────
@@ -101,38 +101,38 @@ class PurchaseItemResponse(PurchaseItemCreate):
 
 # ─── Purchase Order ────────────────────────────────────────
 class PurchaseOrderCreate(BaseModel):
-    project_id:     Optional[int] = None
+    project_id: Optional[int] = None
     sub_project_id: Optional[int] = None
-    supplier_id:    Optional[int] = None
-    purchase_date:  date
-    due_date:       Optional[date] = None
-    is_paid:        Optional[bool] = False
-    paid_by:        Optional[PaymentBy] = PaymentBy.architect
-    has_receipt:    Optional[bool] = False
-    receipt_type:   Optional[ReceiptType] = None
-    notes:          Optional[str] = None
-    items:          List[PurchaseItemCreate] = []
+    supplier_id: Optional[int] = None
+    purchase_date: date
+    due_date : Optional[date] = None
+    is_paid: Optional[bool] = False
+    paid_by: Optional[str] = None
+    has_receipt: Optional[bool] = False
+    receipt_type: Optional[ReceiptType] = None
+    notes: Optional[str] = None
+    items: List[PurchaseItemCreate] = []
 
 class PurchaseOrderUpdate(BaseModel):
-    project_id:     Optional[int] = None
+    project_id: Optional[int] = None
     sub_project_id: Optional[int] = None
-    supplier_id:    Optional[int] = None
-    purchase_date:  Optional[date] = None
-    is_paid:        Optional[bool] = None
-    paid_by:        Optional[PaymentBy] = None
-    has_receipt:    Optional[bool] = None
-    receipt_type:   Optional[ReceiptType] = None
-    notes:          Optional[str] = None
+    supplier_id: Optional[int] = None
+    purchase_date: Optional[date] = None
+    is_paid: Optional[bool] = None
+    paid_by: Optional[str] = None
+    has_receipt: Optional[bool] = None
+    receipt_type: Optional[ReceiptType] = None
+    notes: Optional[str] = None
 
 class PurchaseOrderResponse(BaseModel):
-    id:             int
+    id: int
     project_id:     Optional[int] = None
     sub_project_id: Optional[int] = None
     supplier_id:    Optional[int] = None
     purchase_date:  date
     due_date:       Optional[date] = None
     is_paid:        bool
-    paid_by:        Optional[PaymentBy] = None
+    paid_by:        Optional[str] = None
     has_receipt:    bool
     receipt_type:   Optional[ReceiptType] = None
     notes:          Optional[str] = None
@@ -140,6 +140,9 @@ class PurchaseOrderResponse(BaseModel):
     total_discount: Optional[Decimal] = None
     total_net:      Optional[Decimal] = None
     items:          List[PurchaseItemResponse] = []
+    payments:       List["POPaymentResponse"] = []
+    total_paid:     Optional[Decimal] = Decimal("0")
+    payment_status: Optional[str] = "unpaid"  # unpaid | partial | paid
     class Config:
         from_attributes = True
 
@@ -155,7 +158,7 @@ class MaterialBase(BaseModel):
     unit_price: Optional[Decimal] = None
     discount_amount: Optional[Decimal] = Decimal("0")
     is_paid: Optional[bool] = False
-    paid_by: Optional[PaymentBy] = None
+    paid_by: Optional[str] = None
     has_receipt: Optional[bool] = False
     receipt_type: Optional[ReceiptType] = None
     notes: Optional[str] = None
@@ -172,7 +175,7 @@ class MaterialUpdate(BaseModel):
     unit_price: Optional[Decimal] = None
     discount_amount: Optional[Decimal] = None
     is_paid: Optional[bool] = None
-    paid_by: Optional[PaymentBy] = None
+    paid_by: Optional[str] = None
     has_receipt: Optional[bool] = None
     receipt_type: Optional[ReceiptType] = None
     receipt_image_url: Optional[str] = None
@@ -184,5 +187,28 @@ class MaterialResponse(MaterialBase):
     subtotal: Optional[Decimal] = None
     net_subtotal: Optional[Decimal] = None
     receipt_image_url: Optional[str] = None
+    class Config:
+        from_attributes = True
+
+# ─── PO Payment ────────────────────────────────────────────
+
+class POPaymentCreate(BaseModel):
+    payment_date:   date
+    amount:         Decimal
+    paid_by:        Optional[str] = None
+    bank_account:   Optional[str] = None
+    payment_method: Optional[str] = "transfer"
+    notes:          Optional[str] = None
+
+class POPaymentResponse(BaseModel):
+    id:             int
+    order_id:       int
+    payment_date:   date
+    amount:         Decimal
+    paid_by:        Optional[str] = None
+    bank_account:   Optional[str] = None
+    payment_method: Optional[str] = None
+    notes:          Optional[str] = None
+
     class Config:
         from_attributes = True

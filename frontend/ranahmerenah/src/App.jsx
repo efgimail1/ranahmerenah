@@ -4,6 +4,7 @@ import Dashboard from './pages/Dashboard'
 import Projects from './pages/Projects'
 import Workers from './pages/Workers'
 import Materials from './pages/Materials'
+import PriceComparison from './pages/PriceComparison'
 import Suppliers from './pages/Suppliers'
 import Catalog from './pages/Catalog'
 import Ledger from './pages/Ledger'
@@ -28,7 +29,7 @@ export default function App() {
         <Route path="/ledger"    element={<Ledger />} />
         <Route path="/wages"     element={<Wages />} />
         <Route path="/payments"  element={<Placeholder title="Payment Terms" />} />
-        <Route path="/prices"    element={<Placeholder title="Price Comparison" />} />
+        <Route path="/prices"    element={<PriceComparison />} />
         <Route path="/reports"   element={<Placeholder title="Reports" />} />
         <Route path="/settings"  element={<Placeholder title="Settings" />} />
       </Route>

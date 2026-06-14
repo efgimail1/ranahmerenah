@@ -50,21 +50,23 @@ export const PAYMENT_STATUS = {
 }
 
 export const WORKER_ROLE = {
-  foreman: 'Mandor',
-  carpenter: 'Tukang Kayu',
-  helper: 'Kenek',
-  furniture_maker: 'Tukang Meubel',
-  bricklayer: 'Tukang Batu',
-  painter: 'Tukang Cat',
-  blacksmith: 'Tukang Las',
-  electrician: 'Elektrisi',
-  plumber: 'Tukang Ledeng',
-  other: 'Lainnya',
+  foreman:            'Mandor',
+  sub_foreman:        'Wakil Mandor',
+  carpenter:          'Tukang Kayu',
+  bricklayer:         'Tukang Batu',
+  bricklayer_general: 'Tukang Bangunan',
+  helper:             'Kenek',
+  furniture_maker:    'Tukang Meubel',
+  painter:            'Tukang Cat',
+  blacksmith:         'Tukang Las',
+  electrician:        'Elektrisi',
+  plumber:            'Tukang Ledeng',
+  other:              'Lainnya',
 }
 
 export const RATE_TYPE = {
-  daily:    'Per Day',
-  per_unit: 'Per Unit',
+  daily:    'Harian (full)',
+  per_unit: 'Per Unit / Borongan',
   fixed:    'Fixed / Lump Sum',
 }
 

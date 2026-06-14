@@ -6,7 +6,9 @@ from datetime import date, datetime
 
 class SubProjectBillingCreate(BaseModel):
     billing_date:   date
-    amount:         Decimal
+    amount:         Decimal                  # gross transfer dari owner
+    qris_fee:       Optional[Decimal] = Decimal("0")
+    net_amount:     Optional[Decimal] = None # otomatis diisi backend
     received_from:  Optional[str] = None
     bank_account:   Optional[str] = None
     payment_method: Optional[str] = "transfer"
@@ -18,10 +20,12 @@ class SubProjectBillingResponse(BaseModel):
     sub_project_id: int
     billing_date:   date
     amount:         Decimal
-    received_from:  Optional[str]    = None
-    bank_account:   Optional[str]    = None
-    payment_method: Optional[str]    = None
-    notes:          Optional[str]    = None
+    qris_fee:       Optional[Decimal]  = Decimal("0")
+    net_amount:     Optional[Decimal]  = None
+    received_from:  Optional[str]      = None
+    bank_account:   Optional[str]      = None
+    payment_method: Optional[str]      = None
+    notes:          Optional[str]      = None
     created_at:     Optional[datetime] = None
 
     class Config:
@@ -67,3 +71,64 @@ class SubProjectResponse(SubProjectCreate):
 
     class Config:
         from_attributes = True
+        
+
+class KasbonCreate(BaseModel):
+    week_start: date
+    week_end:   date
+    amount:     Decimal
+    notes:      Optional[str] = None
+
+class KasbonResponse(BaseModel):
+    id:             int
+    sub_project_id: int
+    week_start:     date
+    week_end:       date
+    amount:         Decimal
+    notes:          Optional[str] = None
+    created_at:     Optional[datetime] = None
+    class Config:
+        from_attributes = True
+
+class ContractorKasbonCreate(BaseModel):
+    kasbon_date: date
+    amount:      Decimal
+    notes:       Optional[str] = None
+
+class ContractorKasbonResponse(BaseModel):
+    id:             int
+    sub_project_id: int
+    kasbon_date:    date
+    amount:         Decimal
+    notes:          Optional[str] = None
+    created_at:     Optional[datetime] = None
+    class Config:
+        from_attributes = True
+        
+class WorkerKasbonCreate(BaseModel):
+    kasbon_date:    date
+    amount:         Decimal
+    transferred_by: Optional[str] = None
+    transferred_to: Optional[str] = None
+    bank_account:   Optional[str] = None
+    notes:          Optional[str] = None
+
+class WorkerKasbonUpdate(BaseModel):
+    status:      Optional[str] = None
+    payroll_ref: Optional[str] = None
+
+class WorkerKasbonResponse(BaseModel):
+    id:             int
+    sub_project_id: int
+    kasbon_date:    date
+    amount:         Decimal
+    transferred_by: Optional[str] = None
+    transferred_to: Optional[str] = None
+    bank_account:   Optional[str] = None
+    notes:          Optional[str] = None
+    status:         Optional[str] = "pending"
+    payroll_ref:    Optional[str] = None
+    created_at:     Optional[datetime] = None
+
+    class Config:
+        from_attributes = True        

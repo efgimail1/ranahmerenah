@@ -18,8 +18,24 @@ git push -u origin project-for-kontraktor
 
 
 
-1. ada workers yang kerjanya setengah hari saja.
-2. di database ada rate_type, rate_amount tapi di form workers tidak ada.
-3. ingin menambahkan role wakil mandor.
-4. kalau ada tukang serba bisa bagaimana ya ? dia bisa tukang kayu, dia bisa tukang besi, bisa semua.
+ada 2 case seperti ini : 
+1. kasbon tukang, kalau tukang ada kasbon akan mengurangi upah tukang di minggu dia kasbon (secara keseluruhan, bukan per orang tapi keseluruhan total upah minggu itu)
+2. kasbon kontraktor, ini mungkin sebagai catatan saja, ini mengurangi pembagian hasil di akhir.
+coba di analisa best practicenya seperti apa.
+
+
+
+
+- waktu assign workers di subprojects atau pun di projects, apakah bisa rate nya default mengambil dari worker yang di assign, tapi masih bisa mengedit jika mau mengubah ratenya.
+
+
+
+- di purchase orders bisakah kita mengupload bon atau invoice nya.
+possible kan menyimpan gambar di database ? best practicenya seperti apa ?
+
+- ketika input pembayaran di purchase orders, tidak langsung masuk ke ledger. harusnya ngelink.
+
+- ada case tukang di kasih uang kas. misal di kasih 500.000 nanti mesti tau uang itu di pakai belanja buat apa, total keluarnya berapa, sisa nya berapa, apakah kurang atau harus di balikin berapa. best practice nya gimana.
+
+
 

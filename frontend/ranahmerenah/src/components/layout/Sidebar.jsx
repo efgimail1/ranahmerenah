@@ -34,8 +34,8 @@ export default function Sidebar() {
             <span className="text-white text-sm font-bold">RM</span>
           </div>
           <div>
-            <p className="text-sm font-semibold text-gray-900">RanahMerenah</p>
-            <p className="text-xs text-gray-400">Architect Pro</p>
+            <p className="text-sm font-semibold text-gray-900">Ranah Merenah</p>
+
           </div>
         </div>
       </div>
