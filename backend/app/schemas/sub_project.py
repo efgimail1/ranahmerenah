@@ -12,6 +12,7 @@ class SubProjectBillingCreate(BaseModel):
     received_from:  Optional[str] = None
     bank_account:   Optional[str] = None
     payment_method: Optional[str] = "transfer"
+    ledger_entry_id: Optional[int] = None
     notes:          Optional[str] = None
 
 
@@ -25,6 +26,7 @@ class SubProjectBillingResponse(BaseModel):
     received_from:  Optional[str]      = None
     bank_account:   Optional[str]      = None
     payment_method: Optional[str]      = None
+    ledger_entry_id: Optional[int] = None
     notes:          Optional[str]      = None
     created_at:     Optional[datetime] = None
 

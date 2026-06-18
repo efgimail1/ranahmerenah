@@ -28,7 +28,6 @@ export default function App() {
         <Route path="/catalog"   element={<Catalog />} />
         <Route path="/ledger"    element={<Ledger />} />
         <Route path="/wages"     element={<Wages />} />
-        <Route path="/payments"  element={<Placeholder title="Payment Terms" />} />
         <Route path="/prices"    element={<PriceComparison />} />
         <Route path="/reports"   element={<Placeholder title="Reports" />} />
         <Route path="/settings"  element={<Placeholder title="Settings" />} />

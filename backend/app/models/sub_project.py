@@ -38,6 +38,7 @@ class SubProjectBilling(Base):
 
     id             = Column(Integer, primary_key=True, index=True)
     sub_project_id = Column(Integer, ForeignKey("sub_projects.id"), nullable=False)
+    ledger_entry_id = Column(Integer, ForeignKey("ledger_entries.id"), nullable=True)
     billing_date   = Column(Date, nullable=False)
     amount         = Column(Numeric(15, 2), nullable=False)   # gross transfer
     qris_fee       = Column(Numeric(15, 2), default=0)        # potongan QRIS 0.3%

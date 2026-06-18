@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ledgerApi } from "../api/ledger";
 import { projectsApi } from "../api/projects";
+import { subProjectsApi } from "../api/subprojects";
 import Button from "../components/ui/Button";
 import Badge from "../components/ui/Badge";
 import Card from "../components/ui/Card";
@@ -42,69 +43,89 @@ const methodLabel = {
 };
 
 // ─── Income Form ───────────────────────────────────────────
-function IncomeForm({ initial, onSubmit, loading, projects, isLinked = false }) {
+function IncomeForm({
+  initial,
+  onSubmit,
+  loading,
+  projects,
+  isLinked = false,
+}) {
   const [form, setForm] = useState(
-    initial ? {
-      entry_date:         toInputDate(initial.entry_date),
-      description:        initial.description        || '',
-      received_from:      initial.received_from      || '',
-      gross_amount:       initial.gross_amount ? String(Math.round(parseFloat(initial.gross_amount))) : '',
-      payment_method:     initial.payment_method     || 'transfer',
-      bank_account:       initial.bank_account       || '',
-      project_id:         initial.project_id         || '',
-      project_payment_id: initial.project_payment_id || '',
-      is_qris:            initial.is_qris            || false,
-      notes:              initial.notes              || '',
-    } : {
-      entry_date: '', description: '', received_from: '',
-      gross_amount: '', payment_method: 'transfer',
-      bank_account: '', project_id: '', project_payment_id: '',
-      is_qris: false, notes: '',
-    }
-  )
+    initial
+      ? {
+          entry_date: toInputDate(initial.entry_date),
+          description: initial.description || "",
+          received_from: initial.received_from || "",
+          gross_amount: initial.gross_amount
+            ? String(Math.round(parseFloat(initial.gross_amount)))
+            : "",
+          payment_method: initial.payment_method || "transfer",
+          bank_account: initial.bank_account || "",
+          project_id: initial.project_id || "",
+          project_payment_id: initial.project_payment_id || "",
+          is_qris: initial.is_qris || false,
+          notes: initial.notes || "",
+        }
+      : {
+          entry_date: "",
+          description: "",
+          received_from: "",
+          gross_amount: "",
+          payment_method: "transfer",
+          bank_account: "",
+          project_id: "",
+          project_payment_id: "",
+          is_qris: false,
+          notes: "",
+        },
+  );
 
-  const set = (f, v) => setForm(p => ({ ...p, [f]: v }))
-  const gross     = parseFloat(parseCurrency(form.gross_amount)) || 0
-  const qrisFee   = form.is_qris ? Math.round(gross * QRIS_FEE_RATE) : 0
-  const netAmount = gross - qrisFee
+  const set = (f, v) => setForm((p) => ({ ...p, [f]: v }));
+  const gross = parseFloat(parseCurrency(form.gross_amount)) || 0;
+  const qrisFee = form.is_qris ? Math.round(gross * QRIS_FEE_RATE) : 0;
+  const netAmount = gross - qrisFee;
 
   // Load payment terms dari project yang dipilih
-  const selectedProject = projects.find(p => p.id === parseInt(form.project_id))
-  const paymentTerms    = selectedProject?.payments || []
+  const selectedProject = projects.find(
+    (p) => p.id === parseInt(form.project_id),
+  );
+  const paymentTerms = selectedProject?.payments || [];
 
   // Auto-fill amount dari payment term yang dipilih
   const handleTermSelect = (termId) => {
-    set('project_payment_id', termId)
+    set("project_payment_id", termId);
     if (termId) {
-      const term = paymentTerms.find(t => t.id === parseInt(termId))
+      const term = paymentTerms.find((t) => t.id === parseInt(termId));
       if (term) {
         const remaining = Math.max(
           (parseFloat(term.amount) || 0) - (parseFloat(term.amount_paid) || 0),
-          0
-        )
+          0,
+        );
         // Auto-fill description jika belum diisi
         if (!form.description) {
-          set('description', `Payment — ${term.term_label || 'Term'}`)
+          set("description", `Payment — ${term.term_label || "Term"}`);
         }
         // Auto-fill amount dengan sisa yang belum dibayar
         if (remaining > 0) {
-          set('gross_amount', String(Math.round(remaining)))
+          set("gross_amount", String(Math.round(remaining)));
         }
       }
     }
-  }
+  };
 
   const handleSubmit = (e) => {
-    e.preventDefault()
+    e.preventDefault();
     onSubmit({
       ...form,
-      entry_type:         'income',
-      gross_amount:       gross,
-      is_qris:            form.is_qris,
-      project_id:         form.project_id         ? parseInt(form.project_id)         : null,
-      project_payment_id: form.project_payment_id ? parseInt(form.project_payment_id) : null,
-    })
-  }
+      entry_type: "income",
+      gross_amount: gross,
+      is_qris: form.is_qris,
+      project_id: form.project_id ? parseInt(form.project_id) : null,
+      project_payment_id: form.project_payment_id
+        ? parseInt(form.project_payment_id)
+        : null,
+    });
+  };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
@@ -117,47 +138,89 @@ function IncomeForm({ initial, onSubmit, loading, projects, isLinked = false }) 
           <AlertCircle size={14} className="text-amber-600 mt-0.5 shrink-0" />
           <div className="text-xs text-amber-700">
             <p className="font-semibold mb-0.5">Limited editing</p>
-            <p>This entry is linked to a payment term. Amount and date cannot be changed. To change the amount, void this entry and create a new one.</p>
+            <p>
+              This entry is linked to a payment term. Amount and date cannot be
+              changed. To change the amount, void this entry and create a new
+              one.
+            </p>
           </div>
         </div>
       )}
 
       <div className="grid grid-cols-2 gap-3">
-        <Input label="Date *" type="date" value={form.entry_date}
-          onChange={e => set('entry_date', e.target.value)}
-          required disabled={isLinked} />
+        <Input
+          label="Date *"
+          type="date"
+          value={form.entry_date}
+          onChange={(e) => set("entry_date", e.target.value)}
+          required
+          disabled={isLinked}
+        />
 
-        <Input label="Received From *" value={form.received_from}
-          onChange={e => set('received_from', e.target.value)}
-          placeholder="e.g. Mr. Budi" required disabled={isLinked} />
+        <Input
+          label="Received From *"
+          value={form.received_from}
+          onChange={(e) => set("received_from", e.target.value)}
+          placeholder="e.g. Mr. Budi"
+          required
+          disabled={isLinked}
+        />
 
-        <Input label="Description *" value={form.description}
-          onChange={e => set('description', e.target.value)}
+        <Input
+          label="Description *"
+          value={form.description}
+          onChange={(e) => set("description", e.target.value)}
           placeholder="e.g. Down Payment — Villa Project"
-          className="col-span-2" required />
+          className="col-span-2"
+          required
+        />
 
-        <Select label="Payment Method" value={form.payment_method}
-          onChange={e => { set('payment_method', e.target.value); set('is_qris', e.target.value === 'qris') }}
-          disabled={isLinked}>
-          {PAYMENT_METHOD_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        <Select
+          label="Payment Method"
+          value={form.payment_method}
+          onChange={(e) => {
+            set("payment_method", e.target.value);
+            set("is_qris", e.target.value === "qris");
+          }}
+          disabled={isLinked}
+        >
+          {PAYMENT_METHOD_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
         </Select>
 
-        <Select label="Bank Account" value={form.bank_account}
-          onChange={e => set('bank_account', e.target.value)}
-          disabled={isLinked}>
+        <Select
+          label="Bank Account"
+          value={form.bank_account}
+          onChange={(e) => set("bank_account", e.target.value)}
+          disabled={isLinked}
+        >
           <option value="">-- Select Bank --</option>
-          {BANK_OPTIONS.map(b => <option key={b} value={b}>{b}</option>)}
+          {BANK_OPTIONS.map((b) => (
+            <option key={b} value={b}>
+              {b}
+            </option>
+          ))}
         </Select>
 
         {/* Project — ketika berubah, reset payment term */}
-        <Select label="Project" value={form.project_id}
-          onChange={e => {
-            set('project_id', e.target.value)
-            set('project_payment_id', '') // reset term saat project berubah
+        <Select
+          label="Project"
+          value={form.project_id}
+          onChange={(e) => {
+            set("project_id", e.target.value);
+            set("project_payment_id", ""); // reset term saat project berubah
           }}
-          disabled={isLinked}>
+          disabled={isLinked}
+        >
           <option value="">-- Select Project --</option>
-          {projects.map(p => <option key={p.id} value={p.id}>{p.project_name}</option>)}
+          {projects.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.project_name}
+            </option>
+          ))}
         </Select>
 
         {/* Payment Term — hanya muncul jika project dipilih */}
@@ -169,69 +232,87 @@ function IncomeForm({ initial, onSubmit, loading, projects, isLinked = false }) 
             </label>
             <select
               value={form.project_payment_id}
-              onChange={e => handleTermSelect(e.target.value)}
+              onChange={(e) => handleTermSelect(e.target.value)}
               className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
             >
               <option value="">-- No specific term --</option>
-              {paymentTerms.map(t => {
-                const amtPaid   = parseFloat(t.amount_paid || 0)
-                const termAmt   = parseFloat(t.amount || 0)
-                const remaining = Math.max(termAmt - amtPaid, 0)
-                const isPaid    = t.status === 'paid'
+              {paymentTerms.map((t) => {
+                const amtPaid = parseFloat(t.amount_paid || 0);
+                const termAmt = parseFloat(t.amount || 0);
+                const remaining = Math.max(termAmt - amtPaid, 0);
+                const isPaid = t.status === "paid";
                 return (
                   <option key={t.id} value={t.id} disabled={isPaid}>
                     {t.term_label || `Term ${t.id}`}
-                    {' — '}
+                    {" — "}
                     {isPaid
-                      ? '✓ Paid'
-                      : `Remaining: ${new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(remaining)}`
-                    }
+                      ? "✓ Paid"
+                      : `Remaining: ${new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(remaining)}`}
                   </option>
-                )
+                );
               })}
             </select>
 
             {/* Info box jika term dipilih */}
-            {form.project_payment_id && (() => {
-              const term      = paymentTerms.find(t => t.id === parseInt(form.project_payment_id))
-              if (!term) return null
-              const amtPaid   = parseFloat(term.amount_paid || 0)
-              const termAmt   = parseFloat(term.amount || 0)
-              const remaining = Math.max(termAmt - amtPaid, 0)
-              return (
-                <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-xs space-y-1 mt-1">
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Term Amount</span>
-                    <span className="font-medium">{formatRupiah(termAmt)}</span>
+            {form.project_payment_id &&
+              (() => {
+                const term = paymentTerms.find(
+                  (t) => t.id === parseInt(form.project_payment_id),
+                );
+                if (!term) return null;
+                const amtPaid = parseFloat(term.amount_paid || 0);
+                const termAmt = parseFloat(term.amount || 0);
+                const remaining = Math.max(termAmt - amtPaid, 0);
+                return (
+                  <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-xs space-y-1 mt-1">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Term Amount</span>
+                      <span className="font-medium">
+                        {formatRupiah(termAmt)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Already Paid</span>
+                      <span className="font-medium text-emerald-600">
+                        {formatRupiah(amtPaid)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between font-semibold border-t border-emerald-200 pt-1">
+                      <span className="text-gray-700">Remaining</span>
+                      <span className="text-emerald-700">
+                        {formatRupiah(remaining)}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Already Paid</span>
-                    <span className="font-medium text-emerald-600">{formatRupiah(amtPaid)}</span>
-                  </div>
-                  <div className="flex justify-between font-semibold border-t border-emerald-200 pt-1">
-                    <span className="text-gray-700">Remaining</span>
-                    <span className="text-emerald-700">{formatRupiah(remaining)}</span>
-                  </div>
-                </div>
-              )
-            })()}
+                );
+              })()}
           </div>
         )}
 
         {/* Kalau project dipilih tapi tidak ada terms */}
         {form.project_id && !isLinked && paymentTerms.length === 0 && (
           <div className="flex items-center">
-            <p className="text-xs text-gray-400 italic">No payment terms configured for this project.</p>
+            <p className="text-xs text-gray-400 italic">
+              No payment terms configured for this project.
+            </p>
           </div>
         )}
 
-        <CurrencyInput label="Gross Amount *" value={form.gross_amount}
-          onChange={v => set('gross_amount', v)}
-          placeholder="0" disabled={isLinked} />
+        <CurrencyInput
+          label="Gross Amount *"
+          value={form.gross_amount}
+          onChange={(v) => set("gross_amount", v)}
+          placeholder="0"
+          disabled={isLinked}
+        />
 
-        <Input label="Notes" value={form.notes}
-          onChange={e => set('notes', e.target.value)}
-          placeholder="optional" className="col-span-2" />
+        <Input
+          label="Notes"
+          value={form.notes}
+          onChange={(e) => set("notes", e.target.value)}
+          placeholder="optional"
+          className="col-span-2"
+        />
       </div>
 
       {form.is_qris && gross > 0 && (
@@ -245,7 +326,9 @@ function IncomeForm({ initial, onSubmit, loading, projects, isLinked = false }) 
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-gray-600">QRIS fee (0.3%)</span>
-            <span className="font-medium text-red-500">- {formatRupiah(qrisFee)}</span>
+            <span className="font-medium text-red-500">
+              - {formatRupiah(qrisFee)}
+            </span>
           </div>
           <div className="flex justify-between text-sm font-semibold border-t border-amber-200 pt-1.5">
             <span className="text-gray-800">Net amount received</span>
@@ -256,11 +339,11 @@ function IncomeForm({ initial, onSubmit, loading, projects, isLinked = false }) 
 
       <div className="flex justify-end pt-2 border-t border-gray-100">
         <Button type="submit" variant="primary" loading={loading}>
-          {initial ? 'Save Changes' : 'Save Income'}
+          {initial ? "Save Changes" : "Save Income"}
         </Button>
       </div>
     </form>
-  )
+  );
 }
 
 // ─── Expense Form ──────────────────────────────────────────
@@ -280,6 +363,7 @@ function ExpenseForm({ initial, onSubmit, loading, projects }) {
           payment_method: initial.payment_method || "cash",
           bank_account: initial.bank_account || "",
           project_id: initial.project_id || "",
+          sub_project_id: initial.sub_project_id || "",
           notes: initial.notes || "",
         }
       : {
@@ -291,6 +375,7 @@ function ExpenseForm({ initial, onSubmit, loading, projects }) {
           payment_method: "cash",
           bank_account: "",
           project_id: "",
+          sub_project_id: "",
           notes: "",
         },
   );
@@ -300,6 +385,22 @@ function ExpenseForm({ initial, onSubmit, loading, projects }) {
   const discount = parseFloat(parseCurrency(form.discount_received)) || 0;
   const net = gross - discount;
 
+  const selectedProject = projects.find(
+    (p) => p.id === parseInt(form.project_id),
+  );
+  const isContractor = selectedProject?.project_type === "contractor";
+
+  const { data: subProjects = [] } = useQuery({
+    queryKey: ["sub-projects-ledger-form", form.project_id],
+    queryFn: () => subProjectsApi.getByProject(parseInt(form.project_id)),
+    enabled: !!form.project_id && isContractor,
+  });
+
+  const handleProjectChange = (val) => {
+    set("project_id", val);
+    set("sub_project_id", ""); // reset sub project saat project berubah
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     onSubmit({
@@ -308,6 +409,9 @@ function ExpenseForm({ initial, onSubmit, loading, projects }) {
       gross_expense: gross,
       discount_received: discount,
       project_id: form.project_id ? parseInt(form.project_id) : null,
+      sub_project_id: form.sub_project_id
+        ? parseInt(form.sub_project_id)
+        : null,
     });
   };
 
@@ -364,15 +468,48 @@ function ExpenseForm({ initial, onSubmit, loading, projects }) {
         <Select
           label="Project"
           value={form.project_id}
-          onChange={(e) => set("project_id", e.target.value)}
+          onChange={(e) => handleProjectChange(e.target.value)}
         >
           <option value="">-- Select Project --</option>
           {projects.map((p) => (
             <option key={p.id} value={p.id}>
+              {p.project_type === "contractor" ? "🏗 " : ""}
               {p.project_name}
             </option>
           ))}
         </Select>
+
+        {isContractor && (
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-gray-700">
+              Sub Project
+              <span className="text-orange-400 font-normal ml-1">
+                kontraktor
+              </span>
+            </label>
+            <select
+              value={form.sub_project_id}
+              onChange={(e) => set("sub_project_id", e.target.value)}
+              className={`rounded-lg border px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all ${
+                !form.sub_project_id
+                  ? "border-orange-300 bg-orange-50/30"
+                  : "border-gray-300"
+              }`}
+            >
+              <option value="">-- Select Sub Project --</option>
+              {subProjects.map((sp) => (
+                <option key={sp.id} value={sp.id}>
+                  {sp.name}
+                </option>
+              ))}
+            </select>
+            {subProjects.length === 0 && (
+              <p className="text-xs text-amber-500">
+                Belum ada sub project untuk project ini.
+              </p>
+            )}
+          </div>
+        )}
         <CurrencyInput
           label="Gross Amount (before discount)"
           value={form.gross_expense}
@@ -431,27 +568,30 @@ export default function Ledger() {
   const [editEntry, setEditEntry] = useState(null);
   const [filterType, setFilterType] = useState("");
   const [filterProject, setFilterProject] = useState("");
+  const [filterSubProject, setFilterSubProject] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
   const params = {};
   if (filterType) params.entry_type = filterType;
   if (filterProject) params.project_id = filterProject;
+  if (filterSubProject) params.sub_project_id = filterSubProject;
   if (dateFrom) params.date_from = dateFrom;
   if (dateTo) params.date_to = dateTo;
 
   const { data: entries = [], isLoading } = useQuery({
-    queryKey: ["ledger", filterType, filterProject, dateFrom, dateTo],
+    queryKey: ["ledger", filterType, filterProject, filterSubProject, dateFrom, dateTo],
     queryFn: () => ledgerApi.getAll(params),
   });
 
   const { data: summary } = useQuery({
-    queryKey: ["ledger-summary", filterProject, dateFrom, dateTo],
+    queryKey: ["ledger-summary", filterProject, filterSubProject, dateFrom, dateTo],
     queryFn: () =>
       ledgerApi.getSummary(
-        filterProject || dateFrom || dateTo
+        filterProject || filterSubProject || dateFrom || dateTo
           ? {
               project_id: filterProject || undefined,
+              sub_project_id: filterSubProject || undefined,
               date_from: dateFrom || undefined,
               date_to: dateTo || undefined,
             }
@@ -463,6 +603,18 @@ export default function Ledger() {
     queryKey: ["projects"],
     queryFn: () => projectsApi.getAll(),
   });
+
+  const selectedFilterProject = projects.find(
+  (p) => p.id === parseInt(filterProject),
+);
+const isContractorFilter =
+  selectedFilterProject?.project_type === "contractor";
+
+const { data: filterSubProjects = [] } = useQuery({
+  queryKey: ["sub-projects-ledger-filter", filterProject],
+  queryFn: () => subProjectsApi.getByProject(parseInt(filterProject)),
+  enabled: !!filterProject && isContractorFilter,
+});
 
   const inv = () => {
     qc.invalidateQueries({ queryKey: ["ledger"] });
@@ -544,6 +696,40 @@ export default function Ledger() {
   const projectMap = Object.fromEntries(
     projects.map((p) => [p.id, p.project_name]),
   );
+
+  // Collect unique contractor project IDs from entries to build sub project name map
+const contractorProjectIds = [
+  ...new Set(
+    entries
+      .filter(
+        (e) =>
+          e.sub_project_id &&
+          projects.find((p) => p.id === e.project_id)?.project_type ===
+            "contractor",
+      )
+      .map((e) => e.project_id),
+  ),
+];
+
+const { data: allSubProjects = [] } = useQuery({
+  queryKey: ["sub-projects-all-in-ledger", contractorProjectIds.join(",")],
+  queryFn: async () => {
+    if (!contractorProjectIds.length) return [];
+    const results = await Promise.all(
+      contractorProjectIds.map((pid) => subProjectsApi.getByProject(pid)),
+    );
+    return results.flat();
+  },
+  enabled: contractorProjectIds.length > 0,
+});
+
+const subProjectNameMap = {};
+filterSubProjects.forEach((sp) => {
+  subProjectNameMap[sp.id] = sp.name;
+});
+allSubProjects.forEach((sp) => {
+  subProjectNameMap[sp.id] = sp.name;
+});
 
   const totalIncome = summary?.total_income || 0;
   const totalExpense = summary?.total_expense || 0;
@@ -649,17 +835,36 @@ export default function Ledger() {
           ))}
         </div>
         <select
-          value={filterProject}
-          onChange={(e) => setFilterProject(e.target.value)}
-          className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 w-44"
-        >
-          <option value="">All Projects</option>
-          {projects.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.project_name}
-            </option>
-          ))}
-        </select>
+  value={filterProject}
+  onChange={(e) => {
+    setFilterProject(e.target.value);
+    setFilterSubProject("");
+  }}
+  className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 w-44"
+>
+  <option value="">All Projects</option>
+  {projects.map((p) => (
+    <option key={p.id} value={p.id}>
+      {p.project_type === "contractor" ? "🏗 " : ""}
+      {p.project_name}
+    </option>
+  ))}
+</select>
+
+{isContractorFilter && filterSubProjects.length > 0 && (
+  <select
+    value={filterSubProject}
+    onChange={(e) => setFilterSubProject(e.target.value)}
+    className="text-sm border border-orange-300 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-orange-400 w-44"
+  >
+    <option value="">All Sub Projects</option>
+    {filterSubProjects.map((sp) => (
+      <option key={sp.id} value={sp.id}>
+        {sp.name}
+      </option>
+    ))}
+  </select>
+)}
         <div className="flex items-center gap-2">
           <span className="text-xs text-gray-400">From</span>
           <input
@@ -704,7 +909,7 @@ export default function Ledger() {
       ) : (
         <Card padding={false}>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
                   <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide w-28">
@@ -723,8 +928,11 @@ export default function Ledger() {
                     Bank
                   </th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide w-28">
-                    Project
-                  </th>
+  Project
+</th>
+<th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide w-28">
+  Sub Project
+</th>
                   <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide w-32">
                     Gross
                   </th>
@@ -785,22 +993,27 @@ export default function Ledger() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-xs text-gray-500">
-                        {entry.project_id
-                          ? projectMap[entry.project_id] || "-"
-                          : "-"}
-                      </td>
-                      <td className="px-4 py-3 text-right text-gray-700 text-sm">
+  {entry.project_id
+    ? projectMap[entry.project_id] || "-"
+    : "-"}
+</td>
+<td className="px-4 py-3 text-xs text-orange-600">
+  {entry.sub_project_id
+    ? subProjectNameMap[entry.sub_project_id] || `Sub #${entry.sub_project_id}`
+    : "-"}
+</td>
+                      <td className="px-4 py-3 text-right text-gray-700 text-xs">
                         {formatRupiah(
                           isIncome ? entry.gross_amount : entry.gross_expense,
                         )}
                       </td>
                       <td className="px-4 py-3 text-right">
                         {isIncome ? (
-                          <span className="text-sm font-semibold text-emerald-700">
+                          <span className="text-xs font-semibold text-emerald-700">
                             + {formatRupiah(entry.net_amount)}
                           </span>
                         ) : (
-                          <span className="text-sm font-semibold text-red-600">
+                          <span className="text-xs font-semibold text-red-600">
                             - {formatRupiah(entry.net_expense)}
                           </span>
                         )}
@@ -857,12 +1070,12 @@ export default function Ledger() {
               <tfoot>
                 <tr className="border-t-2 border-gray-200 bg-gray-50">
                   <td
-                    colSpan={6}
+                    colSpan={7}
                     className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"
                   >
                     Total ({entries.length} entries)
                   </td>
-                  <td className="px-4 py-3 text-right text-sm font-semibold text-gray-700">
+                  <td className="px-4 py-3 text-right text-xs font-semibold text-gray-700">
                     {formatRupiah(
                       entries.reduce(
                         (s, e) =>
@@ -876,7 +1089,7 @@ export default function Ledger() {
                       ),
                     )}
                   </td>
-                  <td className="px-4 py-3 text-right text-sm font-bold">
+                  <td className="px-4 py-3 text-right text-xs font-bold">
                     {netBalance >= 0 ? (
                       <span className="text-emerald-700">
                         + {formatRupiah(netBalance)}
@@ -940,7 +1153,7 @@ export default function Ledger() {
             onSubmit={handleEditSubmit}
             loading={updateMutation.isPending}
             projects={projects}
-            isLinked={!!editEntry?.project_payment_id} 
+            isLinked={!!editEntry?.project_payment_id}
           />
         ) : (
           <ExpenseForm
@@ -949,7 +1162,7 @@ export default function Ledger() {
             onSubmit={handleEditSubmit}
             loading={updateMutation.isPending}
             projects={projects}
-            isLinked={!!editEntry?.project_payment_id} 
+            isLinked={!!editEntry?.project_payment_id}
           />
         )}
       </Modal>

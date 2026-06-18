@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from app.routers import projects, workers, materials, ledger, dashboard, timesheets, sub_projects
@@ -19,6 +20,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── Mount folder uploads agar bisa diakses via URL ──
+# Path relatif dari backend/app/main.py ke root project/uploads
+UPLOADS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "uploads")
+os.makedirs(UPLOADS_DIR, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")
 
 app.include_router(projects.router)
 app.include_router(sub_projects.router)

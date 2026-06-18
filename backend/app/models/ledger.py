@@ -22,6 +22,8 @@ class LedgerEntry(Base):
     description = Column(String(255), nullable=False)
     bank_account = Column(String(50), nullable=True)
     project_id   = Column(Integer, ForeignKey("projects.id"), nullable=True)
+    sub_project_id = Column(Integer, ForeignKey("sub_projects.id"), nullable=True)
+    purchase_order_id = Column(Integer, ForeignKey("purchase_orders.id"), nullable=True)
 
     # income
     received_from = Column(String(150))

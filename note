@@ -17,25 +17,20 @@ git push -u origin project-for-kontraktor
 
 
 
-
-ada 2 case seperti ini : 
-1. kasbon tukang, kalau tukang ada kasbon akan mengurangi upah tukang di minggu dia kasbon (secara keseluruhan, bukan per orang tapi keseluruhan total upah minggu itu)
-2. kasbon kontraktor, ini mungkin sebagai catatan saja, ini mengurangi pembagian hasil di akhir.
-coba di analisa best practicenya seperti apa.
-
-
-
-
 - waktu assign workers di subprojects atau pun di projects, apakah bisa rate nya default mengambil dari worker yang di assign, tapi masih bisa mengedit jika mau mengubah ratenya.
 
+- bisa edit periode di workers
+
+- ada input manual expense atau income langsung dari modul ledgernya, nah di situ ada input sub projects juga, bisakah ngelink ke total spent yang ada di halaman sub projects
 
 
 - di purchase orders bisakah kita mengupload bon atau invoice nya.
 possible kan menyimpan gambar di database ? best practicenya seperti apa ?
 
-- ketika input pembayaran di purchase orders, tidak langsung masuk ke ledger. harusnya ngelink.
 
 - ada case tukang di kasih uang kas. misal di kasih 500.000 nanti mesti tau uang itu di pakai belanja buat apa, total keluarnya berapa, sisa nya berapa, apakah kurang atau harus di balikin berapa. best practice nya gimana.
 
+- waktu payroll run pas pilih metode bayar tidak ada pilihan bank nya, juga di pilih masuk ke sub projects apa
 
+- pembayaran di PO sistem select gitu, di pilih PO mana saja yang mau di bayar sekaligus. gimana best practicenya. di select mana PO saja, nanti total invoicenya di akumulasi ada berapa jumlahnya, lalu kita input tanggal bayar, di bayar oleh siapa, bank apa, catatan, nanti otomatis masuk ke ledger jadi 1, tetapi di PO nya tertulis sudah di bayar dan di kolom pembayaran terisi
 

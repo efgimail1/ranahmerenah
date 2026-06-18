@@ -99,6 +99,7 @@ def sp_to_response(sp: SubProject, db: Session) -> SubProjectResponse:
                 received_from=b.received_from,
                 bank_account=b.bank_account,
                 payment_method=b.payment_method,
+                ledger_entry_id=b.ledger_entry_id,
                 notes=b.notes,
                 created_at=b.created_at,
             )
@@ -238,6 +239,7 @@ def create_billing(
         received_from=payload.received_from,
         bank_account=payload.bank_account,
         payment_method=payload.payment_method,
+        ledger_entry_id=payload.ledger_entry_id,
         notes=payload.notes,
     )
     db.add(billing)

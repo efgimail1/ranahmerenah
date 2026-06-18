@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import {
-  LayoutDashboard, Briefcase, CreditCard, HardHat,
+  LayoutDashboard, Briefcase, HardHat,
   Package, Truck, BookOpen, Receipt, BarChart3,
   Settings, Archive, Tag
 } from 'lucide-react'
@@ -10,7 +10,6 @@ const nav = [
   { to: '/',          label: 'Dashboard',        icon: LayoutDashboard, end: true },
   { section: 'Projects' },
   { to: '/projects',  label: 'Projects',          icon: Briefcase },
-  { to: '/payments',  label: 'Payment Terms',     icon: CreditCard },
   { section: 'Field' },
   { to: '/workers',   label: 'Workers',           icon: HardHat },
   { to: '/materials', label: 'Purchase Orders',   icon: Package },

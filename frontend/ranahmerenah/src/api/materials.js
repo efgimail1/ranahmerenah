@@ -36,4 +36,13 @@ export const materialsApi = {
   // Legacy
   getAll: (params) => api.get('/materials', { params }).then(r => r.data),
   delete: (id)     => api.delete(`/materials/${id}`),
+
+  // Purchase Order Receipt Upload
+uploadReceipt: (file) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return api.post('/purchase-orders/upload-receipt', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }).then(r => r.data) // { url: "/uploads/receipts/xxxx.jpg" }
+},
 }

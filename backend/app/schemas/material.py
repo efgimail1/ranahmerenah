@@ -107,9 +107,10 @@ class PurchaseOrderCreate(BaseModel):
     purchase_date: date
     due_date : Optional[date] = None
     is_paid: Optional[bool] = False
-    paid_by: Optional[str] = None
+    ordered_by: Optional[str] = None
     has_receipt: Optional[bool] = False
     receipt_type: Optional[ReceiptType] = None
+    receipt_image_url: Optional[str] = None
     notes: Optional[str] = None
     items: List[PurchaseItemCreate] = []
 
@@ -119,9 +120,10 @@ class PurchaseOrderUpdate(BaseModel):
     supplier_id: Optional[int] = None
     purchase_date: Optional[date] = None
     is_paid: Optional[bool] = None
-    paid_by: Optional[str] = None
+    ordered_by: Optional[str] = None
     has_receipt: Optional[bool] = None
     receipt_type: Optional[ReceiptType] = None
+    receipt_image_url: Optional[str] = None
     notes: Optional[str] = None
 
 class PurchaseOrderResponse(BaseModel):
@@ -132,9 +134,10 @@ class PurchaseOrderResponse(BaseModel):
     purchase_date:  date
     due_date:       Optional[date] = None
     is_paid:        bool
-    paid_by:        Optional[str] = None
+    ordered_by:        Optional[str] = None
     has_receipt:    bool
     receipt_type:   Optional[ReceiptType] = None
+    receipt_image_url: Optional[str] = None
     notes:          Optional[str] = None
     total_gross:    Optional[Decimal] = None
     total_discount: Optional[Decimal] = None
@@ -158,7 +161,7 @@ class MaterialBase(BaseModel):
     unit_price: Optional[Decimal] = None
     discount_amount: Optional[Decimal] = Decimal("0")
     is_paid: Optional[bool] = False
-    paid_by: Optional[str] = None
+    ordered_by: Optional[str] = None
     has_receipt: Optional[bool] = False
     receipt_type: Optional[ReceiptType] = None
     notes: Optional[str] = None
@@ -175,7 +178,7 @@ class MaterialUpdate(BaseModel):
     unit_price: Optional[Decimal] = None
     discount_amount: Optional[Decimal] = None
     is_paid: Optional[bool] = None
-    paid_by: Optional[str] = None
+    ordered_by: Optional[str] = None
     has_receipt: Optional[bool] = None
     receipt_type: Optional[ReceiptType] = None
     receipt_image_url: Optional[str] = None
@@ -199,6 +202,7 @@ class POPaymentCreate(BaseModel):
     bank_account:   Optional[str] = None
     payment_method: Optional[str] = "transfer"
     notes:          Optional[str] = None
+    ledger_entry_id: Optional[int] = None
 
 class POPaymentResponse(BaseModel):
     id:             int
@@ -209,6 +213,7 @@ class POPaymentResponse(BaseModel):
     bank_account:   Optional[str] = None
     payment_method: Optional[str] = None
     notes:          Optional[str] = None
+    ledger_entry_id: Optional[int] = None   # ← tambah    
 
     class Config:
         from_attributes = True

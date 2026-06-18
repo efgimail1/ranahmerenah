@@ -4245,19 +4245,25 @@ function SubProjectPurchaseOrders({ subProject }) {
                   Supplier
                 </th>
                 <th className="text-left px-3 py-2.5 font-medium text-gray-500 w-24">
-                  Tanggal
+                  Tgl PO
                 </th>
                 <th className="text-left px-3 py-2.5 font-medium text-gray-500 w-28">
-                  Dibayar Oleh
-                </th>
-                <th className="text-center px-3 py-2.5 font-medium text-gray-500 w-24">
-                  Status
+                  Dipesan Oleh
                 </th>
                 <th className="text-right px-3 py-2.5 font-medium text-gray-500 w-28">
                   Invoice
                 </th>
+                <th className="text-left px-3 py-2.5 font-medium text-gray-500 w-28">
+                  Tgl Bayar Terakhir
+                </th>
                 <th className="text-right px-3 py-2.5 font-medium text-gray-500 w-28">
-                  Dibayar
+                  Sudah Dibayar
+                </th>
+                <th className="text-right px-3 py-2.5 font-medium text-gray-500 w-24">
+                  Sisa
+                </th>
+                <th className="text-center px-3 py-2.5 font-medium text-gray-500 w-24">
+                  Status
                 </th>
               </tr>
             </thead>
@@ -4265,27 +4271,89 @@ function SubProjectPurchaseOrders({ subProject }) {
               {orders.map((order) => {
                 const supplier = supplierMap[order.supplier_id];
                 const hasDisc = parseFloat(order.total_discount) > 0;
+                const paidAmt = parseFloat(order.total_paid || 0);
+                const netAmt = parseFloat(order.total_net || 0);
+                const sisa = Math.max(0, netAmt - paidAmt);
+                const lastPayment = order.payments?.length
+                  ? order.payments.reduce(
+                      (latest, p) =>
+                        !latest || p.payment_date > latest.payment_date
+                          ? p
+                          : latest,
+                      null,
+                    )
+                  : null;
                 return (
                   <tr
                     key={order.id}
                     className="hover:bg-gray-50 transition-colors"
                   >
+                    {/* PO No */}
                     <td className="px-3 py-2.5">
                       <span className="font-mono font-bold text-emerald-700">
                         PO-{String(order.id).padStart(5, "0")}
                       </span>
                     </td>
+
+                    {/* Supplier */}
                     <td className="px-3 py-2.5 text-gray-700 font-medium">
                       {supplier?.store_name || (
                         <span className="text-gray-300 italic">-</span>
                       )}
                     </td>
+
+                    {/* Tgl PO */}
                     <td className="px-3 py-2.5 text-gray-500">
                       {formatDate(order.purchase_date)}
                     </td>
+
+                    {/* Dipesan Oleh */}
                     <td className="px-3 py-2.5 text-gray-500">
-                      {order.paid_by || "-"}
+                      {order.ordered_by || "-"}
                     </td>
+
+                    {/* Invoice */}
+                    <td className="px-3 py-2.5 text-right text-gray-600">
+                      {formatRupiah(order.total_gross)}
+                      {hasDisc && (
+                        <div className="text-xs text-emerald-600">
+                          -{formatRupiah(order.total_discount)}
+                        </div>
+                      )}
+                    </td>
+
+                    {/* Tgl Bayar Terakhir */}
+                    <td className="px-3 py-2.5 text-gray-500">
+                      {lastPayment ? (
+                        formatDate(lastPayment.payment_date)
+                      ) : (
+                        <span className="text-gray-300">-</span>
+                      )}
+                    </td>
+
+                    {/* Sudah Dibayar */}
+                    <td className="px-3 py-2.5 text-right font-semibold text-emerald-700">
+                      {paidAmt > 0 ? (
+                        formatRupiah(paidAmt)
+                      ) : (
+                        <span className="text-gray-300 font-normal">-</span>
+                      )}
+                    </td>
+
+                    {/* Sisa */}
+                    <td className="px-3 py-2.5 text-right">
+                      {sisa > 0 ? (
+                        <span className="font-semibold text-red-500">
+                          {formatRupiah(sisa)}
+                        </span>
+                      ) : (
+                        <span className="text-emerald-500 font-semibold">
+                          Lunas
+                        </span>
+                      )}
+                    </td>
+
+                    {/* Status */}
                     <td className="px-3 py-2.5 text-center">
                       <span
                         className={`px-1.5 py-0.5 rounded-full text-xs font-semibold ${
@@ -4297,46 +4365,44 @@ function SubProjectPurchaseOrders({ subProject }) {
                         }`}
                       >
                         {order.payment_status === "paid"
-                          ? "Paid"
+                          ? "✓ Paid"
                           : order.payment_status === "partial"
-                            ? "Partial"
+                            ? "⋯ Partial"
                             : "Committed"}
                       </span>
-                    </td>
-                    <td className="px-3 py-2.5 text-right text-gray-600">
-                      {formatRupiah(order.total_gross)}
-                      {hasDisc && (
-                        <div className="text-emerald-600">
-                          -{formatRupiah(order.total_discount)}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-3 py-2.5 text-right font-semibold text-gray-900">
-                      {formatRupiah(order.total_net)}
                     </td>
                   </tr>
                 );
               })}
             </tbody>
             <tfoot>
-              <tr className="bg-gray-50 border-t-2 border-gray-200">
+              <tr className="bg-gray-50 border-t-2 border-gray-200 font-semibold">
                 <td
-                  colSpan={5}
-                  className="px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide"
+                  colSpan={4}
+                  className="px-3 py-2.5 text-xs text-gray-500 uppercase tracking-wide"
                 >
                   Total ({orders.length} PO)
                 </td>
-                <td className="px-3 py-2.5 text-right font-semibold text-gray-700">
+                <td className="px-3 py-2.5 text-right text-gray-700">
                   {formatRupiah(totalInvoice)}
                 </td>
-                <td className="px-3 py-2.5 text-right font-bold text-emerald-700">
-                  {formatRupiah(totalPaid + totalCommitted)}
+                <td />
+                <td className="px-3 py-2.5 text-right text-emerald-700">
+                  {formatRupiah(totalPaid)}
                 </td>
+                <td className="px-3 py-2.5 text-right text-red-500">
+                  {totalCommitted > 0 ? (
+                    formatRupiah(totalCommitted)
+                  ) : (
+                    <span className="text-emerald-500">Lunas</span>
+                  )}
+                </td>
+                <td />
               </tr>
               {totalDiscount > 0 && (
                 <tr className="bg-emerald-50">
                   <td
-                    colSpan={6}
+                    colSpan={8}
                     className="px-3 py-2 text-right text-xs text-emerald-600"
                   >
                     Total Discount Profit
@@ -4712,13 +4778,18 @@ function WorkerKasbonTab({ subProjectId }) {
                   />
                 </td>
                 <td className="px-2 py-1.5">
-                  <input
-                    type="text"
+                  <select
                     value={form.bank_account}
                     onChange={(e) => setF("bank_account", e.target.value)}
-                    placeholder="BCA, Jago..."
                     className={iCls}
-                  />
+                  >
+                    <option value="">-- Bank --</option>
+                    {BANK_OPTIONS.map((b) => (
+                      <option key={b} value={b}>
+                        {b}
+                      </option>
+                    ))}
+                  </select>
                 </td>
                 <td className="px-2 py-1.5">
                   <input
@@ -4731,6 +4802,7 @@ function WorkerKasbonTab({ subProjectId }) {
                 </td>
                 <td className="px-2 py-1.5 text-center">
                   <button
+                    type="button"
                     onClick={handleSave}
                     disabled={createMutation.isPending}
                     className="p-1 text-amber-600 hover:bg-amber-100 rounded transition-all"
@@ -4782,6 +4854,7 @@ function WorkerKasbonTab({ subProjectId }) {
                   </td>
                   <td className="px-2 py-2.5 text-center">
                     <button
+                      type="button"
                       onClick={() => {
                         if (confirm("Hapus kasbon ini?"))
                           deleteMutation.mutate(k.id);
@@ -4893,8 +4966,10 @@ function WorkerKasbonTab({ subProjectId }) {
 
 // ─── SubProjectDetail Modal ─────────────────────────────────
 function SubProjectDetail({ subProject, project, open, onClose, onUpdated }) {
+  const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState("billings");
   const QRIS_FEE_RATE = 0.003;
+  const [showBillingForm, setShowBillingForm] = useState(false);
   const [billingForm, setBillingForm] = useState({
     billing_date: "",
     amount: "",
@@ -4934,10 +5009,35 @@ function SubProjectDetail({ subProject, project, open, onClose, onUpdated }) {
   ];
 
   const createBilling = useMutation({
-    mutationFn: (d) => subProjectsApi.createBilling(data.id, d),
+    mutationFn: async (d) => {
+      // 1. Catat ke ledger dulu — dapatkan ledger entry id
+      const ledgerEntry = await ledgerApi.createIncome({
+        entry_date: d.billing_date,
+        entry_type: "income",
+        description: `Transfer Masuk · ${data.name} · ${project?.project_name}`,
+        received_from: d.received_from || "",
+        gross_amount: d.amount,
+        payment_method: d.payment_method,
+        bank_account: d.bank_account || null,
+        is_qris: d.payment_method === "qris",
+        project_id: project?.id || null,
+        sub_project_id: data.id,
+        notes: d.notes || null,
+      });
+
+      // 2. Simpan billing dengan ledger_entry_id
+      const billing = await subProjectsApi.createBilling(data.id, {
+        ...d,
+        ledger_entry_id: ledgerEntry.id,
+      });
+
+      return billing;
+    },
     onSuccess: () => {
       refetch();
       if (onUpdated) onUpdated();
+      qc.invalidateQueries({ queryKey: ["ledger"] });
+      qc.invalidateQueries({ queryKey: ["ledger-summary"] });
       setBillingForm({
         billing_date: "",
         amount: "",
@@ -4948,17 +5048,33 @@ function SubProjectDetail({ subProject, project, open, onClose, onUpdated }) {
         payment_method: "transfer",
         notes: "",
       });
-      toast.success("Transfer masuk dicatat!");
+      toast.success("Transfer masuk dicatat & masuk ledger!");
     },
     onError: (e) => toast.error(e.message),
   });
 
   const deleteBilling = useMutation({
-    mutationFn: (bid) => subProjectsApi.deleteBilling(data.id, bid),
+    mutationFn: async (bid) => {
+      // Cari billing yang mau dihapus untuk dapat ledger_entry_id
+      const billing = billings.find((b) => b.id === bid);
+
+      await subProjectsApi.deleteBilling(data.id, bid);
+
+      // Hapus ledger entry kalau ada
+      if (billing?.ledger_entry_id) {
+        try {
+          await ledgerApi.delete(billing.ledger_entry_id);
+        } catch {
+          // Ledger entry mungkin sudah dihapus manual — ignore
+        }
+      }
+    },
     onSuccess: () => {
       refetch();
       if (onUpdated) onUpdated();
-      toast.success("Dihapus.");
+      qc.invalidateQueries({ queryKey: ["ledger"] });
+      qc.invalidateQueries({ queryKey: ["ledger-summary"] });
+      toast.success("Transfer & ledger entry dihapus.");
     },
     onError: (e) => toast.error(e.message),
   });
@@ -4998,7 +5114,7 @@ function SubProjectDetail({ subProject, project, open, onClose, onUpdated }) {
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 shrink-0">
           <div>
@@ -5143,150 +5259,187 @@ function SubProjectDetail({ subProject, project, open, onClose, onUpdated }) {
           {/* ── BILLINGS TAB ── */}
           {activeTab === "billings" && (
             <div className="space-y-4">
-              {/* Add billing form */}
-              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-3">
-                <h4 className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">
-                  Tambah Transfer Masuk
-                </h4>
-                <div className="grid grid-cols-2 gap-3">
-                  <Input
-                    label="Tanggal *"
-                    type="date"
-                    value={billingForm.billing_date}
-                    onChange={(e) => setB("billing_date", e.target.value)}
-                  />
-                  <CurrencyInput
-                    label="Jumlah Transfer *"
-                    value={billingForm.amount}
-                    onChange={(v) => setB("amount", v)}
-                    placeholder="0"
-                  />
-                  <Input
-                    label="Dari"
-                    value={billingForm.received_from}
-                    onChange={(e) => setB("received_from", e.target.value)}
-                    placeholder="Nama owner / klien"
-                  />
-                  <Select
-                    label="Bank"
-                    value={billingForm.bank_account}
-                    onChange={(e) => setB("bank_account", e.target.value)}
+              {/* Inline transfer masuk table+form */}
+              <div className="border border-blue-200 rounded-xl overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-2.5 bg-blue-50 border-b border-blue-200">
+                  <span className="text-xs font-semibold text-blue-700 uppercase tracking-wide">
+                    ⬇ Transfer Masuk
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowBillingForm((s) => !s)}
+                    className="text-xs px-2.5 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-all"
                   >
-                    <option value="">-- Select Bank --</option>
-                    {BANK_OPTIONS_LIST.map((b) => (
-                      <option key={b} value={b}>
-                        {b}
-                      </option>
-                    ))}
-                  </Select>
-                  <Select
-                    label="Metode Pembayaran"
-                    value={billingForm.payment_method}
-                    onChange={(e) => setB("payment_method", e.target.value)}
-                  >
-                    {PM_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </Select>
-                  <Input
-                    label="Catatan"
-                    value={billingForm.notes}
-                    onChange={(e) => setB("notes", e.target.value)}
-                    placeholder="optional"
-                  />
+                    {showBillingForm ? "Batal" : "+ Tambah Transfer"}
+                  </button>
                 </div>
 
-                {/* QRIS fee preview */}
-                {billingForm.payment_method === "qris" &&
-                  billingForm.amount &&
-                  (() => {
-                    const gross =
-                      parseFloat(parseCurrency(billingForm.amount)) || 0;
-                    const fee = Math.round(gross * QRIS_FEE_RATE);
-                    const net = gross - fee;
-                    return (
-                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-1.5">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <AlertCircle size={12} className="text-amber-500" />
-                          <span className="text-xs font-semibold text-amber-700">
-                            Potongan QRIS 0.3%
-                          </span>
-                        </div>
-                        <div className="flex justify-between text-xs">
-                          <span className="text-gray-500">Total Transfer</span>
-                          <span className="font-medium">
-                            {formatRupiah(gross)}
-                          </span>
-                        </div>
-                        <div className="flex justify-between text-xs">
-                          <span className="text-red-500">
-                            Potongan QRIS (0.3%)
-                          </span>
-                          <span className="text-red-600 font-medium">
-                            - {formatRupiah(fee)}
-                          </span>
-                        </div>
-                        <div className="flex justify-between text-xs border-t border-amber-200 pt-1.5">
-                          <span className="font-semibold text-emerald-700">
-                            Yang masuk ke kas
-                          </span>
-                          <span className="font-bold text-emerald-700">
-                            {formatRupiah(net)}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-                <Button
-                  type="button"
-                  variant="primary"
-                  size="sm"
-                  loading={createBilling.isPending}
-                  onClick={handleBillingSubmit}
-                >
-                  + Tambah Transfer
-                </Button>
-              </div>
-
-              {/* Billing list */}
-              {billings.length === 0 ? (
-                <div className="text-center py-8 border border-dashed border-gray-200 rounded-xl">
-                  <ArrowDownCircle
-                    size={24}
-                    className="mx-auto text-gray-300 mb-2"
-                  />
-                  <p className="text-sm text-gray-400">
-                    Belum ada transfer masuk.
-                  </p>
-                </div>
-              ) : (
-                <div className="border border-gray-200 rounded-xl overflow-hidden">
-                  <table className="w-full text-xs">
-                    <thead className="bg-gray-50 border-b border-gray-200">
-                      <tr>
-                        <th className="text-left px-3 py-2.5 font-medium text-gray-500">
-                          Tanggal
-                        </th>
-                        <th className="text-left px-3 py-2.5 font-medium text-gray-500">
-                          Dari
-                        </th>
-                        <th className="text-left px-3 py-2.5 font-medium text-gray-500">
-                          Bank
-                        </th>
-                        <th className="text-left px-3 py-2.5 font-medium text-gray-500">
-                          Metode Pembayaran
-                        </th>
-                        <th className="text-right px-3 py-2.5 font-medium text-gray-500">
-                          Jumlah
-                        </th>
-                        <th className="w-10 px-3 py-2.5"></th>
+                <table className="w-full text-xs">
+                  <thead className="bg-gray-50 border-b border-gray-100">
+                    <tr>
+                      <th className="text-left px-3 py-2 font-medium text-gray-400 w-28">
+                        Tanggal
+                      </th>
+                      <th className="text-right px-3 py-2 font-medium text-gray-400 w-32">
+                        Jumlah
+                      </th>
+                      <th className="text-left px-3 py-2 font-medium text-gray-400 w-32">
+                        Dari
+                      </th>
+                      <th className="text-left px-3 py-2 font-medium text-gray-400 w-24">
+                        Bank
+                      </th>
+                      <th className="text-left px-3 py-2 font-medium text-gray-400 w-28">
+                        Metode
+                      </th>
+                      <th className="text-left px-3 py-2 font-medium text-gray-400">
+                        Catatan
+                      </th>
+                      <th className="w-8"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {/* Input row */}
+                    {showBillingForm && (
+                      <tr className="bg-blue-50/40 border-b border-blue-100">
+                        <td className="px-2 py-1.5">
+                          <input
+                            type="date"
+                            value={billingForm.billing_date}
+                            onChange={(e) =>
+                              setB("billing_date", e.target.value)
+                            }
+                            className="text-xs border border-gray-200 rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400 w-full"
+                          />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <div className="relative">
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400">
+                              Rp
+                            </span>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={
+                                billingForm.amount
+                                  ? new Intl.NumberFormat("id-ID").format(
+                                      parseCurrency(billingForm.amount),
+                                    )
+                                  : ""
+                              }
+                              onChange={(e) =>
+                                setB(
+                                  "amount",
+                                  e.target.value.replace(/\D/g, ""),
+                                )
+                              }
+                              placeholder="0"
+                              className="text-xs border border-gray-200 rounded pl-7 pr-2 py-1.5 bg-white text-right focus:outline-none focus:ring-1 focus:ring-blue-400 w-full"
+                            />
+                          </div>
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input
+                            type="text"
+                            value={billingForm.received_from}
+                            onChange={(e) =>
+                              setB("received_from", e.target.value)
+                            }
+                            placeholder="Nama owner/klien"
+                            className="text-xs border border-gray-200 rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400 w-full"
+                          />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <select
+                            value={billingForm.bank_account}
+                            onChange={(e) =>
+                              setB("bank_account", e.target.value)
+                            }
+                            className="text-xs border border-gray-200 rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400 w-full"
+                          >
+                            <option value="">-- Bank --</option>
+                            {BANK_OPTIONS_LIST.map((b) => (
+                              <option key={b} value={b}>
+                                {b}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <select
+                            value={billingForm.payment_method}
+                            onChange={(e) =>
+                              setB("payment_method", e.target.value)
+                            }
+                            className="text-xs border border-gray-200 rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400 w-full"
+                          >
+                            {PM_OPTIONS.map((o) => (
+                              <option key={o.value} value={o.value}>
+                                {o.label}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input
+                            type="text"
+                            value={billingForm.notes}
+                            onChange={(e) => setB("notes", e.target.value)}
+                            placeholder="optional"
+                            className="text-xs border border-gray-200 rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400 w-full"
+                          />
+                        </td>
+                        <td className="px-2 py-1.5 text-center">
+                          <button
+                            type="button"
+                            onClick={handleBillingSubmit}
+                            disabled={createBilling.isPending}
+                            className="p-1 text-blue-600 hover:bg-blue-100 rounded transition-all"
+                            title="Simpan"
+                          >
+                            <Save size={13} />
+                          </button>
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {billings
+                    )}
+
+                    {/* QRIS preview row, kalau metode qris dan ada amount */}
+                    {showBillingForm &&
+                      billingForm.payment_method === "qris" &&
+                      billingForm.amount &&
+                      (() => {
+                        const gross =
+                          parseFloat(parseCurrency(billingForm.amount)) || 0;
+                        const fee = Math.round(gross * QRIS_FEE_RATE);
+                        const net = gross - fee;
+                        return (
+                          <tr className="bg-amber-50/50">
+                            <td
+                              colSpan={7}
+                              className="px-3 py-2 text-xs text-amber-700"
+                            >
+                              <AlertCircle size={11} className="inline mr-1" />
+                              Potongan QRIS 0.3%: {formatRupiah(gross)} −{" "}
+                              {formatRupiah(fee)} = bersih masuk kas{" "}
+                              <strong>{formatRupiah(net)}</strong>
+                            </td>
+                          </tr>
+                        );
+                      })()}
+
+                    {/* Billing rows */}
+                    {billings.length === 0 && !showBillingForm ? (
+                      <tr>
+                        <td
+                          colSpan={7}
+                          className="px-4 py-5 text-center text-gray-400 italic"
+                        >
+                          Belum ada transfer masuk. Klik "+ Tambah Transfer"
+                          untuk mencatat.
+                        </td>
+                      </tr>
+                    ) : (
+                      billings
                         .sort((a, b) =>
                           b.billing_date.localeCompare(a.billing_date),
                         )
@@ -5304,76 +5457,65 @@ function SubProjectDetail({ subProject, project, open, onClose, onUpdated }) {
                                 : amount;
                           return (
                             <tr key={b.id} className="hover:bg-gray-50 group">
-                              <td className="px-3 py-2.5 text-gray-700">
+                              <td className="px-3 py-2.5 text-gray-600">
                                 {formatDate(b.billing_date)}
+                              </td>
+                              <td className="px-3 py-2.5 text-right font-semibold text-blue-700">
+                                {formatRupiah(displayAmount)}
+                                {qrisFee > 0 && (
+                                  <div className="text-xs text-red-400">
+                                    -{formatRupiah(qrisFee)} QRIS
+                                  </div>
+                                )}
                               </td>
                               <td className="px-3 py-2.5 text-gray-600">
                                 {b.received_from || "-"}
                               </td>
                               <td className="px-3 py-2.5">
                                 {b.bank_account ? (
-                                  <span className="bg-gray-100 text-gray-700 rounded px-1.5 py-0.5">
+                                  <span className="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
                                     {b.bank_account}
                                   </span>
                                 ) : (
                                   <span className="text-gray-300">-</span>
                                 )}
                               </td>
-                              <td className="px-3 py-2.5">
-                                {b.payment_method ? (
-                                  <span className="bg-gray-100 text-gray-700 rounded px-1.5 py-0.5">
-                                    {b.payment_method === "transfer"
-                                      ? "Bank Transfer"
-                                      : b.payment_method === "qris"
-                                        ? "QRIS"
-                                        : b.payment_method === "cash"
-                                          ? "Cash"
-                                          : "-"}
-                                  </span>
-                                ) : (
-                                  <span className="text-gray-300">-</span>
-                                )}
+                              <td className="px-3 py-2.5 text-gray-500">
+                                {b.payment_method === "transfer"
+                                  ? "Bank Transfer"
+                                  : b.payment_method === "qris"
+                                    ? "QRIS"
+                                    : b.payment_method === "cash"
+                                      ? "Cash"
+                                      : "-"}
                               </td>
-                              <td className="px-3 py-2.5 text-right">
-                                <div className="font-bold text-emerald-700">
-                                  {formatRupiah(displayAmount)}
-                                </div>
-                                {parseFloat(b.qris_fee || 0) > 0 && (
-                                  <>
-                                    <div className="text-xs text-red-400">
-                                      -{formatRupiah(b.qris_fee)} QRIS
-                                    </div>
-                                    <div className="text-xs text-gray-400 line-through">
-                                      {formatRupiah(b.amount)}
-                                    </div>
-                                  </>
-                                )}
+                              <td className="px-3 py-2.5 text-gray-400 italic">
+                                {b.notes || "-"}
                               </td>
-                              <td className="px-3 py-2.5 text-center">
+                              <td className="px-2 py-2.5 text-center">
                                 <button
                                   type="button"
                                   onClick={() => {
                                     if (confirm("Hapus transfer ini?"))
                                       deleteBilling.mutate(b.id);
                                   }}
-                                  className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                                  className="p-1 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded opacity-0 group-hover:opacity-100 transition-all"
                                 >
-                                  <X size={13} />
+                                  <Trash2 size={11} />
                                 </button>
                               </td>
                             </tr>
                           );
-                        })}
-                    </tbody>
+                        })
+                    )}
+                  </tbody>
+                  {billings.length > 0 && (
                     <tfoot>
-                      <tr className="bg-emerald-50 border-t-2 border-emerald-200">
-                        <td
-                          colSpan={4}
-                          className="px-3 py-2.5 text-xs font-semibold text-emerald-700"
-                        >
-                          Total ({billings.length} transfer)
+                      <tr className="border-t-2 border-blue-200 bg-blue-50">
+                        <td className="px-3 py-2 text-xs font-semibold text-blue-700">
+                          Total ({billings.length})
                         </td>
-                        <td className="px-3 py-2.5 text-right font-bold text-emerald-700">
+                        <td className="px-3 py-2 text-right font-bold text-blue-700">
                           {formatRupiah(
                             billings.reduce((s, b) => {
                               const amount = parseFloat(b.amount || 0);
@@ -5391,12 +5533,13 @@ function SubProjectDetail({ subProject, project, open, onClose, onUpdated }) {
                             }, 0),
                           )}
                         </td>
-                        <td />
+                        <td colSpan={5}></td>
                       </tr>
                     </tfoot>
-                  </table>
-                </div>
-              )}
+                  )}
+                </table>
+              </div>
+
               {/* Kasbon Kontraktor */}
               <ContractorKasbonSection subProjectId={data?.id} />
             </div>

@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+import os
+import shutil
+import uuid
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from decimal import Decimal
@@ -284,9 +287,10 @@ def _enrich_order(order):
         "purchase_date": order.purchase_date,
         "due_date": order.due_date,
         "is_paid": order.is_paid,
-        "paid_by": order.paid_by,
+        "ordered_by": order.ordered_by,
         "has_receipt": order.has_receipt,
         "receipt_type": order.receipt_type,
+        "receipt_image_url": order.receipt_image_url,
         "notes": order.notes,
         "total_gross": order.total_gross,
         "total_discount": order.total_discount,
@@ -370,9 +374,10 @@ def update_purchase_order(
     order.purchase_date = payload.purchase_date
     order.due_date = payload.due_date
     order.is_paid = payload.is_paid
-    order.paid_by = payload.paid_by
+    order.ordered_by = payload.ordered_by
     order.has_receipt = payload.has_receipt
     order.receipt_type = payload.receipt_type
+    order.receipt_image_url = payload.receipt_image_url
     order.notes = payload.notes
 
     # hapus semua items lama lalu buat ulang
@@ -453,8 +458,6 @@ def delete_material(material_id: int, db: Session = Depends(get_db)):
 
 
 # ─── PO Payments ───────────────────────────────────────────
-
-
 @router.get(
     "/purchase-orders/{order_id}/payments", response_model=List[POPaymentResponse]
 )
@@ -487,7 +490,7 @@ def add_po_payment(
     payment = POPayment(order_id=order_id, **payload.dict())
     db.add(payment)
     db.flush()
-
+    
     # Recompute total_paid and update is_paid on PO
     db.refresh(order)
     total_paid = sum(float(p.amount or 0) for p in order.payments)
@@ -496,6 +499,7 @@ def add_po_payment(
     db.commit()
     db.refresh(payment)
     return payment
+
 
 
 @router.delete(
@@ -527,3 +531,26 @@ def delete_po_payment(order_id: int, payment_id: int, db: Session = Depends(get_
             order.total_net or 0
         )
     db.commit()
+
+
+UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "uploads", "receipts")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+@router.post("/purchase-orders/upload-receipt")
+async def upload_receipt(file: UploadFile = File(...)):
+    original_name = os.path.splitext(file.filename)[0]
+    ext = os.path.splitext(file.filename)[1]
+
+    # Bersihkan nama dari karakter yang tidak aman untuk path file
+    safe_name = "".join(c for c in original_name if c.isalnum() or c in (" ", "-", "_")).strip()
+    safe_name = safe_name.replace(" ", "_")
+
+    unique_suffix = uuid.uuid4().hex[:6]
+    final_name = f"{safe_name}_{unique_suffix}{ext}"
+    file_path = os.path.join(UPLOAD_DIR, final_name)
+
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    url = f"/uploads/receipts/{final_name}"
+    return {"url": url}

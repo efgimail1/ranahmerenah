@@ -12,6 +12,8 @@ class LedgerEntryBase(BaseModel):
     payment_method: Optional[PaymentMethod] = None
     bank_account:   Optional[str] = None    # ← TAMBAH
     project_id:     Optional[int] = None    # ← TAMBAH
+    sub_project_id: Optional[int] = None
+    purchase_order_id: Optional[int] = None
     notes:          Optional[str] = None
 
 class LedgerIncomeCreate(LedgerEntryBase):
@@ -36,6 +38,8 @@ class LedgerEntryUpdate(BaseModel):
     payment_method:    Optional[PaymentMethod] = None
     bank_account:      Optional[str]           = None
     project_id:        Optional[int]           = None
+    sub_project_id:    Optional[int]           = None
+    purchase_order_id: Optional[int] = None
     notes:             Optional[str]           = None
     received_from:     Optional[str]           = None
     gross_amount:      Optional[Decimal]       = None
