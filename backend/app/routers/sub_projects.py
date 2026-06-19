@@ -59,15 +59,45 @@ def calc_summary(sp: SubProject, db: Session) -> SubProjectSummary:
     except Exception:
         total_po = 0.0
 
-    total_spent = total_workers + total_po
+    # Total Other Expenses — expense manual dari Ledger yang TIDAK terkait PO/Wage
+    # (PO dan Wage sudah dihitung lewat tabel masing-masing di atas;
+    #  kalau dihitung lagi dari ledger akan double count)
+    try:
+        from app.models.ledger import LedgerEntry
+        other_expense_result = db.query(
+            func.coalesce(func.sum(LedgerEntry.net_expense), 0)
+        ).filter(
+            LedgerEntry.sub_project_id == sp.id,
+            LedgerEntry.entry_type == "expense",
+            LedgerEntry.source == "manual",
+        ).scalar()
+        total_other_expense = float(other_expense_result or 0)
+    except Exception:
+        total_other_expense = 0.0
+
+    # Total kasbon kontraktor — bukan cost konstruksi, hanya mengurangi kas
+    total_contractor_kasbon = sum(
+        float(k.amount or 0) for k in sp.contractor_kasbons
+    )
+
+    # total_spent = cost konstruksi murni (RAB Usage) — Workers + PO + Other Expenses manual
+    total_spent = total_workers + total_po + total_other_expense
+
+    # cash_available = kas riil — TERMASUK kasbon kontraktor (uang keluar dari kas)
+    cash_available = total_billings - total_spent - total_contractor_kasbon
+
     remaining_budget = rab - total_spent
     outstanding = rab - total_billings
-    cash_available = total_billings - total_spent
+
+    # cash_available = kas riil — TERMASUK kasbon kontraktor (uang keluar dari kas)
+    cash_available = total_billings - total_spent - total_contractor_kasbon
 
     return SubProjectSummary(
         total_billings=round(total_billings, 2),
         total_workers=round(total_workers, 2),
         total_po=round(total_po, 2),
+        total_other_expense=round(total_other_expense, 2),
+        total_contractor_kasbon=round(total_contractor_kasbon, 2),
         total_spent=round(total_spent, 2),
         remaining_budget=round(remaining_budget, 2),
         outstanding=round(outstanding, 2),
@@ -117,7 +147,10 @@ def sp_to_response(sp: SubProject, db: Session) -> SubProjectResponse:
 def get_sub_projects(project_id: int, db: Session = Depends(get_db)):
     sps = (
         db.query(SubProject)
-        .options(joinedload(SubProject.billings))
+        .options(
+            joinedload(SubProject.billings),
+            joinedload(SubProject.contractor_kasbons),
+        )
         .filter(SubProject.project_id == project_id)
         .order_by(SubProject.sort_order, SubProject.id)
         .all()
@@ -129,7 +162,10 @@ def get_sub_projects(project_id: int, db: Session = Depends(get_db)):
 def get_sub_project(sp_id: int, db: Session = Depends(get_db)):
     sp = (
         db.query(SubProject)
-        .options(joinedload(SubProject.billings))
+        .options(
+            joinedload(SubProject.billings),
+            joinedload(SubProject.contractor_kasbons),
+        )
         .filter(SubProject.id == sp_id)
         .first()
     )

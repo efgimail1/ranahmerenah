@@ -15,6 +15,7 @@ class LedgerEntryBase(BaseModel):
     sub_project_id: Optional[int] = None
     purchase_order_id: Optional[int] = None
     notes:          Optional[str] = None
+    source: Optional[str] = "manual"
 
 class LedgerIncomeCreate(LedgerEntryBase):
     entry_type:         EntryType = EntryType.income
@@ -47,6 +48,7 @@ class LedgerEntryUpdate(BaseModel):
     paid_to:           Optional[str]           = None
     gross_expense:     Optional[Decimal]       = None
     discount_received: Optional[Decimal]       = None
+    source: Optional[str] = "manual"
 
 class LedgerEntryResponse(LedgerEntryBase):
     id:                int
@@ -63,6 +65,7 @@ class LedgerEntryResponse(LedgerEntryBase):
     purchase_order_id: Optional[int]    = None
     material_id:       Optional[int]    = None
     wage_payment_id:   Optional[int]    = None
+    source: Optional[str] = "manual"
 
     class Config:
         from_attributes = True

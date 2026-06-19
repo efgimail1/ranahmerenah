@@ -21,11 +21,6 @@ git push -u origin project-for-kontraktor
 
 - bisa edit periode di workers
 
-- ada input manual expense atau income langsung dari modul ledgernya, nah di situ ada input sub projects juga, bisakah ngelink ke total spent yang ada di halaman sub projects
-
-
-- di purchase orders bisakah kita mengupload bon atau invoice nya.
-possible kan menyimpan gambar di database ? best practicenya seperti apa ?
 
 
 - ada case tukang di kasih uang kas. misal di kasih 500.000 nanti mesti tau uang itu di pakai belanja buat apa, total keluarnya berapa, sisa nya berapa, apakah kurang atau harus di balikin berapa. best practice nya gimana.

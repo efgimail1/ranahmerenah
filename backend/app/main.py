@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
-from app.routers import projects, workers, materials, ledger, dashboard, timesheets, sub_projects
+from app.routers import projects, workers, materials, ledger, dashboard, timesheets, sub_projects, petty_cash
 import os
 
 load_dotenv()
@@ -34,6 +34,7 @@ app.include_router(materials.router)
 app.include_router(ledger.router)
 app.include_router(dashboard.router)
 app.include_router(timesheets.router)
+app.include_router(petty_cash.router)
 @app.get("/")
 def root():
     return {"app": os.getenv("APP_NAME"), "status": "running", "version": "1.0.0"}

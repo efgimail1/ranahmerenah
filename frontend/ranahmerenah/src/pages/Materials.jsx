@@ -1059,6 +1059,7 @@ function ExpandedPODetail({ order, onRefresh, suppliers }) {
         project_id: order.project_id || null,
         sub_project_id: order.sub_project_id || null,
         purchase_order_id: order.id,
+        source: "po_payment",
         notes: data.notes || null,
       });
 

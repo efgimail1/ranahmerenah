@@ -161,5 +161,7 @@ class POPayment(Base):
     notes          = Column(Text)
     created_at     = Column(DateTime, server_default=func.now())
     ledger_entry_id = Column(Integer, ForeignKey("ledger_entries.id"), nullable=True)
+    petty_cash_id  = Column(Integer, ForeignKey("petty_cash.id"), nullable=True)
 
     order = relationship("PurchaseOrder", back_populates="payments")
+    petty_cash = relationship("PettyCash", back_populates="po_payments")

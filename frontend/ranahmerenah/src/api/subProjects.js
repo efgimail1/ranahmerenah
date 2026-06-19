@@ -42,4 +42,19 @@ export const subProjectsApi = {
   createWorkerKasbon:  (spId, data)      => api.post(`/sub-projects/${spId}/worker-kasbons`, data).then(r => r.data),
   updateWorkerKasbon:  (spId, id, data)  => api.patch(`/sub-projects/${spId}/worker-kasbons/${id}`, data).then(r => r.data),
   deleteWorkerKasbon:  (spId, id)        => api.delete(`/sub-projects/${spId}/worker-kasbons/${id}`),
+
+  // Petty Cash (Kas Tukang)
+getPettyCash: (spId, pcStatus) =>
+  api.get(`/sub-projects/${spId}/petty-cash`, {
+    params: pcStatus ? { pc_status: pcStatus } : {},
+  }).then((r) => r.data),
+
+createPettyCash: (spId, data) =>
+  api.post(`/sub-projects/${spId}/petty-cash`, data).then((r) => r.data),
+
+deletePettyCash: (spId, pcId) =>
+  api.delete(`/sub-projects/${spId}/petty-cash/${pcId}`),
+
+settlePettyCash: (spId, pcId, data) =>
+  api.post(`/sub-projects/${spId}/petty-cash/${pcId}/settle`, data).then((r) => r.data),
 }

@@ -203,6 +203,7 @@ class POPaymentCreate(BaseModel):
     payment_method: Optional[str] = "transfer"
     notes:          Optional[str] = None
     ledger_entry_id: Optional[int] = None
+    petty_cash_id:  Optional[int] = None
 
 class POPaymentResponse(BaseModel):
     id:             int
@@ -214,6 +215,7 @@ class POPaymentResponse(BaseModel):
     payment_method: Optional[str] = None
     notes:          Optional[str] = None
     ledger_entry_id: Optional[int] = None   # ← tambah    
+    petty_cash_id:  Optional[int] = None
 
     class Config:
         from_attributes = True

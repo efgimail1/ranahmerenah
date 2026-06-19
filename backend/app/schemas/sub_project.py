@@ -59,6 +59,8 @@ class SubProjectSummary(BaseModel):
     total_billings:   float = 0
     total_workers:    float = 0
     total_po:         float = 0
+    total_other_expense: float = 0
+    total_contractor_kasbon: float = 0
     total_spent:      float = 0
     remaining_budget: float = 0
     outstanding:      float = 0

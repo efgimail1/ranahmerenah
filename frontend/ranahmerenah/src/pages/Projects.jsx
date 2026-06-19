@@ -386,6 +386,7 @@ function TimesheetModal({ assignment, project, onClose }) {
         discount_received: 0,
         payment_method: "cash",
         project_id: project?.id || null,
+        source: "wage_manual",
         notes: payNotes || null,
       });
       return wage;
@@ -1389,6 +1390,7 @@ function PayrollRunModal({ project, assignments, onClose }) {
           discount_received: 0,
           payment_method: payMethod,
           project_id: project?.id || null,
+          source: "kasbon_worker",
           notes: `Kasbon dipotong dari payroll ${weekLabel}`,
         });
       }
@@ -1408,6 +1410,7 @@ function PayrollRunModal({ project, assignments, onClose }) {
         discount_received: 0,
         payment_method: payMethod,
         project_id: project?.id || null,
+        source: "payroll_run",
         notes:
           kasbonTotal > 0
             ? `Gross Rp ${grandTotal.toLocaleString(
@@ -2503,6 +2506,7 @@ function LumpSumPayModal({ assignment, project, onClose }) {
         discount_received: 0,
         payment_method: form.payment_method,
         project_id: project?.id || null,
+        source: "wage_manual",
         notes: form.notes || null,
       });
       return wage;
@@ -2647,6 +2651,7 @@ function PerUnitPayModal({ assignment, project, onClose }) {
         discount_received: 0,
         payment_method: form.payment_method,
         project_id: project?.id || null,
+        source: "wage_manual",
         notes: form.notes || null,
       });
       return wage;
@@ -4505,6 +4510,7 @@ function ContractorKasbonSection({ subProjectId }) {
                 </td>
                 <td className="px-2 py-2.5 text-center">
                   <button
+                    type="button"
                     onClick={() => {
                       if (confirm("Hapus kasbon ini?"))
                         deleteMutation.mutate(k.id);
@@ -4578,6 +4584,7 @@ function ContractorKasbonSection({ subProjectId }) {
             />
           </div>
           <button
+            type="button"
             onClick={() => {
               const amt =
                 parseFloat(String(form.amount).replace(/\D/g, "")) || 0;
@@ -5022,6 +5029,7 @@ function SubProjectDetail({ subProject, project, open, onClose, onUpdated }) {
         is_qris: d.payment_method === "qris",
         project_id: project?.id || null,
         sub_project_id: data.id,
+        source: "billing",
         notes: d.notes || null,
       });
 
@@ -5105,6 +5113,8 @@ function SubProjectDetail({ subProject, project, open, onClose, onUpdated }) {
   const pctWorkers =
     rab > 0 ? Math.min((summary.total_workers / rab) * 100, 100) : 0;
   const pctPO = rab > 0 ? Math.min((summary.total_po / rab) * 100, 100) : 0;
+  const pctOther =
+    rab > 0 ? Math.min((summary.total_other_expense / rab) * 100, 100) : 0;
   const pctBilled =
     rab > 0 ? Math.min((summary.total_billings / rab) * 100, 100) : 0;
 
@@ -5180,6 +5190,12 @@ function SubProjectDetail({ subProject, project, open, onClose, onUpdated }) {
             >
               {formatRupiah(summary.cash_available || 0)}
             </div>
+            {(summary.total_contractor_kasbon || 0) > 0 && (
+              <div className="text-xs text-amber-500 mt-0.5">
+                (termasuk kasbon -
+                {formatRupiah(summary.total_contractor_kasbon)})
+              </div>
+            )}
           </div>
         </div>
 
@@ -5202,6 +5218,13 @@ function SubProjectDetail({ subProject, project, open, onClose, onUpdated }) {
               style={{ width: `${pctPO}%` }}
               title={`PO: ${formatRupiah(summary.total_po || 0)}`}
             />
+            {summary.total_other_expense > 0 && (
+              <div
+                className="h-full bg-purple-400 transition-all"
+                style={{ width: `${pctOther}%` }}
+                title={`Other Expenses: ${formatRupiah(summary.total_other_expense || 0)}`}
+              />
+            )}
           </div>
           <div className="flex gap-4 mt-1 text-xs">
             <span className="flex items-center gap-1">
@@ -5212,6 +5235,12 @@ function SubProjectDetail({ subProject, project, open, onClose, onUpdated }) {
               <span className="w-2 h-2 bg-orange-400 rounded-full inline-block" />
               Purchase Orders: {formatRupiah(summary.total_po || 0)}
             </span>
+            {summary.total_other_expense > 0 && (
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 bg-purple-400 rounded-full inline-block" />
+                Lainnya: {formatRupiah(summary.total_other_expense)}
+              </span>
+            )}
           </div>
 
           {/* Billing bar */}
@@ -5234,6 +5263,11 @@ function SubProjectDetail({ subProject, project, open, onClose, onUpdated }) {
             { id: "workers", label: "Workers", icon: HardHat },
             { id: "po", label: "Purchase Orders", icon: Wallet },
             { id: "kasbon", label: "Kasbon Tukang", icon: CreditCard },
+            {
+              id: "contractor_kasbon",
+              label: "Kasbon Kontraktor",
+              icon: Wallet,
+            },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -5255,6 +5289,10 @@ function SubProjectDetail({ subProject, project, open, onClose, onUpdated }) {
           {/* ── KASBON TUKANG TAB ── */}
           {activeTab === "kasbon" && (
             <WorkerKasbonTab subProjectId={data?.id} />
+          )}
+          {/* ── KASBON KONTRAKTOR TAB ── */}
+          {activeTab === "contractor_kasbon" && (
+            <ContractorKasbonSection subProjectId={data?.id} />
           )}
           {/* ── BILLINGS TAB ── */}
           {activeTab === "billings" && (
@@ -5539,9 +5577,6 @@ function SubProjectDetail({ subProject, project, open, onClose, onUpdated }) {
                   )}
                 </table>
               </div>
-
-              {/* Kasbon Kontraktor */}
-              <ContractorKasbonSection subProjectId={data?.id} />
             </div>
           )}
 

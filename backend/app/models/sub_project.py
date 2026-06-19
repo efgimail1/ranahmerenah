@@ -31,6 +31,8 @@ class SubProject(Base):
                                   cascade="all, delete-orphan")
     worker_kasbons     = relationship("WorkerKasbon", back_populates="sub_project",
                                   cascade="all, delete-orphan")
+    petty_cash_records = relationship("PettyCash", back_populates="sub_project",
+                                  cascade="all, delete-orphan")
 
 
 class SubProjectBilling(Base):
