@@ -27,6 +27,7 @@ class PettyCash(Base):
     status         = Column(String(20), default="open")  # open | settled
     settlement_date = Column(Date, nullable=True)
     refund_ledger_entry_id = Column(Integer, ForeignKey("ledger_entries.id"), nullable=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
     created_at     = Column(DateTime, server_default=func.now())
 
     sub_project = relationship("SubProject", back_populates="petty_cash_records")

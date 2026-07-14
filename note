@@ -17,15 +17,23 @@ git push -u origin project-for-kontraktor
 
 
 
-- waktu assign workers di subprojects atau pun di projects, apakah bisa rate nya default mengambil dari worker yang di assign, tapi masih bisa mengedit jika mau mengubah ratenya.
-
-- bisa edit periode di workers
 
 
 
-- ada case tukang di kasih uang kas. misal di kasih 500.000 nanti mesti tau uang itu di pakai belanja buat apa, total keluarnya berapa, sisa nya berapa, apakah kurang atau harus di balikin berapa. best practice nya gimana.
 
-- waktu payroll run pas pilih metode bayar tidak ada pilihan bank nya, juga di pilih masuk ke sub projects apa
+
+- sdh d revisi nti cek pas sabtu (waktu payroll run pas pilih metode bayar tidak ada pilihan bank nya, juga di pilih masuk ke sub projects apa)
 
 - pembayaran di PO sistem select gitu, di pilih PO mana saja yang mau di bayar sekaligus. gimana best practicenya. di select mana PO saja, nanti total invoicenya di akumulasi ada berapa jumlahnya, lalu kita input tanggal bayar, di bayar oleh siapa, bank apa, catatan, nanti otomatis masuk ke ledger jadi 1, tetapi di PO nya tertulis sudah di bayar dan di kolom pembayaran terisi
+ataukah harus membuat menu baru ?
 
+- bisa upload bon lebih dari 1
+
+- buat payroll tukang dan kasbon tukang, apakah bisa masukin bukti trf ?
+dan bisa masuk ke ledger ?
+bukti trfnya akan tersimpan di table tukang atau table payroll. nanti di ledger akan ngambil data dari table tersebut.
+
+
+- di supplier tambahin nomor rekening dan bank mana accountnya dan juga atas nama siapa di bank nya
+
+- pas pembayaran di PO apakah bisa otomatis ada pilihan klik bayar full atau partial biar enak atau 25%, jadi tidak usah tulis nominal pembayarannya ? best practicenya seperti apa

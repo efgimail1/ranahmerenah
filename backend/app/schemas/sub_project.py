@@ -12,6 +12,7 @@ class SubProjectBillingCreate(BaseModel):
     received_from:  Optional[str] = None
     bank_account:   Optional[str] = None
     payment_method: Optional[str] = "transfer"
+    project_id: Optional[int]     = None
     ledger_entry_id: Optional[int] = None
     notes:          Optional[str] = None
 
@@ -26,7 +27,8 @@ class SubProjectBillingResponse(BaseModel):
     received_from:  Optional[str]      = None
     bank_account:   Optional[str]      = None
     payment_method: Optional[str]      = None
-    ledger_entry_id: Optional[int] = None
+    project_id: Optional[int]          = None
+    ledger_entry_id: Optional[int]     = None
     notes:          Optional[str]      = None
     created_at:     Optional[datetime] = None
 
@@ -98,14 +100,22 @@ class ContractorKasbonCreate(BaseModel):
     kasbon_date: date
     amount:      Decimal
     notes:       Optional[str] = None
+    project_id: Optional[int] = None
+    ledger_entry_id: Optional[int] = None
+    transferred_to:  Optional[str] = None
+    bank_account:    Optional[str] = None
 
 class ContractorKasbonResponse(BaseModel):
-    id:             int
-    sub_project_id: int
-    kasbon_date:    date
-    amount:         Decimal
-    notes:          Optional[str] = None
-    created_at:     Optional[datetime] = None
+    id:              int
+    project_id:      Optional[int] = None
+    sub_project_id:  int
+    kasbon_date:     date
+    amount:          Decimal
+    notes:           Optional[str] = None
+    created_at:      Optional[datetime] = None
+    ledger_entry_id: Optional[int] = None
+    transferred_to:  Optional[str] = None
+    bank_account:    Optional[str] = None
     class Config:
         from_attributes = True
         
@@ -116,6 +126,7 @@ class WorkerKasbonCreate(BaseModel):
     transferred_to: Optional[str] = None
     bank_account:   Optional[str] = None
     notes:          Optional[str] = None
+    project_id: Optional[int] = None
 
 class WorkerKasbonUpdate(BaseModel):
     status:      Optional[str] = None
@@ -133,6 +144,7 @@ class WorkerKasbonResponse(BaseModel):
     status:         Optional[str] = "pending"
     payroll_ref:    Optional[str] = None
     created_at:     Optional[datetime] = None
+    project_id: Optional[int] = None
 
     class Config:
         from_attributes = True        

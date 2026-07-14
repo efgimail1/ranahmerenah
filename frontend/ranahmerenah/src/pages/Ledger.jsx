@@ -121,6 +121,10 @@ function IncomeForm({
       gross_amount: gross,
       is_qris: form.is_qris,
       project_id: form.project_id ? parseInt(form.project_id) : null,
+      sub_project_id: form.sub_project_id
+        ? parseInt(form.sub_project_id)
+        : null,
+      petty_cash_id: form.petty_cash_id ? parseInt(form.petty_cash_id) : null,
       project_payment_id: form.project_payment_id
         ? parseInt(form.project_payment_id)
         : null,
@@ -364,6 +368,7 @@ function ExpenseForm({ initial, onSubmit, loading, projects }) {
           bank_account: initial.bank_account || "",
           project_id: initial.project_id || "",
           sub_project_id: initial.sub_project_id || "",
+          petty_cash_id: initial.petty_cash_id || "",
           notes: initial.notes || "",
         }
       : {
@@ -376,6 +381,7 @@ function ExpenseForm({ initial, onSubmit, loading, projects }) {
           bank_account: "",
           project_id: "",
           sub_project_id: "",
+          petty_cash_id: "",
           notes: "",
         },
   );
@@ -396,9 +402,18 @@ function ExpenseForm({ initial, onSubmit, loading, projects }) {
     enabled: !!form.project_id && isContractor,
   });
 
+  // Query petty cash open untuk sub project yang dipilih
+  const { data: pettyCashOptions = [] } = useQuery({
+    queryKey: ["petty-cash-open-ledger", form.sub_project_id],
+    queryFn: () =>
+      subProjectsApi.getPettyCash(parseInt(form.sub_project_id), "open"),
+    enabled: !!form.sub_project_id && isContractor,
+  });
+
   const handleProjectChange = (val) => {
     set("project_id", val);
     set("sub_project_id", ""); // reset sub project saat project berubah
+    set("petty_cash_id", "");
   };
 
   const handleSubmit = (e) => {
@@ -412,6 +427,8 @@ function ExpenseForm({ initial, onSubmit, loading, projects }) {
       sub_project_id: form.sub_project_id
         ? parseInt(form.sub_project_id)
         : null,
+      petty_cash_id: form.petty_cash_id ? parseInt(form.petty_cash_id) : null,
+      source: "manual",
     });
   };
 
@@ -489,7 +506,10 @@ function ExpenseForm({ initial, onSubmit, loading, projects }) {
             </label>
             <select
               value={form.sub_project_id}
-              onChange={(e) => set("sub_project_id", e.target.value)}
+              onChange={(e) => {
+                set("sub_project_id", e.target.value);
+                set("petty_cash_id", "");
+              }}
               className={`rounded-lg border px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all ${
                 !form.sub_project_id
                   ? "border-orange-300 bg-orange-50/30"
@@ -508,6 +528,51 @@ function ExpenseForm({ initial, onSubmit, loading, projects }) {
                 Belum ada sub project untuk project ini.
               </p>
             )}
+          </div>
+        )}
+        {/* Petty Cash — muncul kalau sub project dipilih dan ada kas open */}
+        {isContractor && form.sub_project_id && pettyCashOptions.length > 0 && (
+          <div className="col-span-2">
+            <label className="text-sm font-medium text-gray-700 block mb-1">
+              Bayar pakai Kas Tukang
+              <span className="text-gray-400 font-normal ml-1">(optional)</span>
+            </label>
+            <select
+              value={form.petty_cash_id}
+              onChange={(e) => set("petty_cash_id", e.target.value)}
+              className={`rounded-lg border px-3 py-2 text-sm text-gray-900 bg-white 
+        focus:outline-none focus:ring-2 focus:ring-emerald-500 w-full
+        ${form.petty_cash_id ? "border-purple-300 bg-purple-50/30" : "border-gray-300"}`}
+            >
+              <option value="">-- Tidak pakai kas tukang --</option>
+              {pettyCashOptions.map((pc) => (
+                <option key={pc.id} value={pc.id}>
+                  {pc.given_to || "Tukang"} · {formatDate(pc.cash_date)} · sisa{" "}
+                  {formatRupiah(pc.remaining)}
+                </option>
+              ))}
+            </select>
+
+            {/* Preview sisa kas kalau dipilih */}
+            {form.petty_cash_id &&
+              (() => {
+                const pc = pettyCashOptions.find(
+                  (p) => p.id === parseInt(form.petty_cash_id),
+                );
+                if (!pc) return null;
+                const sisaSetelah = parseFloat(pc.remaining || 0) - gross;
+                return (
+                  <p
+                    className={`text-xs mt-1 ${
+                      sisaSetelah < 0 ? "text-red-500" : "text-purple-600"
+                    }`}
+                  >
+                    {sisaSetelah < 0
+                      ? `⚠ Melebihi sisa kas (kurang ${formatRupiah(Math.abs(sisaSetelah))})`
+                      : `Sisa kas setelah ini: ${formatRupiah(sisaSetelah)}`}
+                  </p>
+                );
+              })()}
           </div>
         )}
         <CurrencyInput
@@ -580,12 +645,25 @@ export default function Ledger() {
   if (dateTo) params.date_to = dateTo;
 
   const { data: entries = [], isLoading } = useQuery({
-    queryKey: ["ledger", filterType, filterProject, filterSubProject, dateFrom, dateTo],
+    queryKey: [
+      "ledger",
+      filterType,
+      filterProject,
+      filterSubProject,
+      dateFrom,
+      dateTo,
+    ],
     queryFn: () => ledgerApi.getAll(params),
   });
 
   const { data: summary } = useQuery({
-    queryKey: ["ledger-summary", filterProject, filterSubProject, dateFrom, dateTo],
+    queryKey: [
+      "ledger-summary",
+      filterProject,
+      filterSubProject,
+      dateFrom,
+      dateTo,
+    ],
     queryFn: () =>
       ledgerApi.getSummary(
         filterProject || filterSubProject || dateFrom || dateTo
@@ -605,16 +683,16 @@ export default function Ledger() {
   });
 
   const selectedFilterProject = projects.find(
-  (p) => p.id === parseInt(filterProject),
-);
-const isContractorFilter =
-  selectedFilterProject?.project_type === "contractor";
+    (p) => p.id === parseInt(filterProject),
+  );
+  const isContractorFilter =
+    selectedFilterProject?.project_type === "contractor";
 
-const { data: filterSubProjects = [] } = useQuery({
-  queryKey: ["sub-projects-ledger-filter", filterProject],
-  queryFn: () => subProjectsApi.getByProject(parseInt(filterProject)),
-  enabled: !!filterProject && isContractorFilter,
-});
+  const { data: filterSubProjects = [] } = useQuery({
+    queryKey: ["sub-projects-ledger-filter", filterProject],
+    queryFn: () => subProjectsApi.getByProject(parseInt(filterProject)),
+    enabled: !!filterProject && isContractorFilter,
+  });
 
   const inv = () => {
     qc.invalidateQueries({ queryKey: ["ledger"] });
@@ -636,6 +714,9 @@ const { data: filterSubProjects = [] } = useQuery({
     mutationFn: ledgerApi.createExpense,
     onSuccess: () => {
       inv();
+      // Invalidate semua petty cash queries supaya saldo terupdate
+      qc.invalidateQueries({ queryKey: ["petty-cash"] });
+      qc.invalidateQueries({ queryKey: ["petty-cash-open"] });
       setModalType(null);
       toast.success("Expense recorded!");
     },
@@ -698,38 +779,38 @@ const { data: filterSubProjects = [] } = useQuery({
   );
 
   // Collect unique contractor project IDs from entries to build sub project name map
-const contractorProjectIds = [
-  ...new Set(
-    entries
-      .filter(
-        (e) =>
-          e.sub_project_id &&
-          projects.find((p) => p.id === e.project_id)?.project_type ===
-            "contractor",
-      )
-      .map((e) => e.project_id),
-  ),
-];
+  const contractorProjectIds = [
+    ...new Set(
+      entries
+        .filter(
+          (e) =>
+            e.sub_project_id &&
+            projects.find((p) => p.id === e.project_id)?.project_type ===
+              "contractor",
+        )
+        .map((e) => e.project_id),
+    ),
+  ];
 
-const { data: allSubProjects = [] } = useQuery({
-  queryKey: ["sub-projects-all-in-ledger", contractorProjectIds.join(",")],
-  queryFn: async () => {
-    if (!contractorProjectIds.length) return [];
-    const results = await Promise.all(
-      contractorProjectIds.map((pid) => subProjectsApi.getByProject(pid)),
-    );
-    return results.flat();
-  },
-  enabled: contractorProjectIds.length > 0,
-});
+  const { data: allSubProjects = [] } = useQuery({
+    queryKey: ["sub-projects-all-in-ledger", contractorProjectIds.join(",")],
+    queryFn: async () => {
+      if (!contractorProjectIds.length) return [];
+      const results = await Promise.all(
+        contractorProjectIds.map((pid) => subProjectsApi.getByProject(pid)),
+      );
+      return results.flat();
+    },
+    enabled: contractorProjectIds.length > 0,
+  });
 
-const subProjectNameMap = {};
-filterSubProjects.forEach((sp) => {
-  subProjectNameMap[sp.id] = sp.name;
-});
-allSubProjects.forEach((sp) => {
-  subProjectNameMap[sp.id] = sp.name;
-});
+  const subProjectNameMap = {};
+  filterSubProjects.forEach((sp) => {
+    subProjectNameMap[sp.id] = sp.name;
+  });
+  allSubProjects.forEach((sp) => {
+    subProjectNameMap[sp.id] = sp.name;
+  });
 
   const totalIncome = summary?.total_income || 0;
   const totalExpense = summary?.total_expense || 0;
@@ -835,36 +916,36 @@ allSubProjects.forEach((sp) => {
           ))}
         </div>
         <select
-  value={filterProject}
-  onChange={(e) => {
-    setFilterProject(e.target.value);
-    setFilterSubProject("");
-  }}
-  className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 w-44"
->
-  <option value="">All Projects</option>
-  {projects.map((p) => (
-    <option key={p.id} value={p.id}>
-      {p.project_type === "contractor" ? "🏗 " : ""}
-      {p.project_name}
-    </option>
-  ))}
-</select>
+          value={filterProject}
+          onChange={(e) => {
+            setFilterProject(e.target.value);
+            setFilterSubProject("");
+          }}
+          className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 w-44"
+        >
+          <option value="">All Projects</option>
+          {projects.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.project_type === "contractor" ? "🏗 " : ""}
+              {p.project_name}
+            </option>
+          ))}
+        </select>
 
-{isContractorFilter && filterSubProjects.length > 0 && (
-  <select
-    value={filterSubProject}
-    onChange={(e) => setFilterSubProject(e.target.value)}
-    className="text-sm border border-orange-300 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-orange-400 w-44"
-  >
-    <option value="">All Sub Projects</option>
-    {filterSubProjects.map((sp) => (
-      <option key={sp.id} value={sp.id}>
-        {sp.name}
-      </option>
-    ))}
-  </select>
-)}
+        {isContractorFilter && filterSubProjects.length > 0 && (
+          <select
+            value={filterSubProject}
+            onChange={(e) => setFilterSubProject(e.target.value)}
+            className="text-sm border border-orange-300 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-orange-400 w-44"
+          >
+            <option value="">All Sub Projects</option>
+            {filterSubProjects.map((sp) => (
+              <option key={sp.id} value={sp.id}>
+                {sp.name}
+              </option>
+            ))}
+          </select>
+        )}
         <div className="flex items-center gap-2">
           <span className="text-xs text-gray-400">From</span>
           <input
@@ -928,11 +1009,11 @@ allSubProjects.forEach((sp) => {
                     Bank
                   </th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide w-28">
-  Project
-</th>
-<th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide w-28">
-  Sub Project
-</th>
+                    Project
+                  </th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide w-28">
+                    Sub Project
+                  </th>
                   <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide w-32">
                     Gross
                   </th>
@@ -993,15 +1074,16 @@ allSubProjects.forEach((sp) => {
                         )}
                       </td>
                       <td className="px-4 py-3 text-xs text-gray-500">
-  {entry.project_id
-    ? projectMap[entry.project_id] || "-"
-    : "-"}
-</td>
-<td className="px-4 py-3 text-xs text-orange-600">
-  {entry.sub_project_id
-    ? subProjectNameMap[entry.sub_project_id] || `Sub #${entry.sub_project_id}`
-    : "-"}
-</td>
+                        {entry.project_id
+                          ? projectMap[entry.project_id] || "-"
+                          : "-"}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-orange-600">
+                        {entry.sub_project_id
+                          ? subProjectNameMap[entry.sub_project_id] ||
+                            `Sub #${entry.sub_project_id}`
+                          : "-"}
+                      </td>
                       <td className="px-4 py-3 text-right text-gray-700 text-xs">
                         {formatRupiah(
                           isIncome ? entry.gross_amount : entry.gross_expense,

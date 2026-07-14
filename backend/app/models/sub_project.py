@@ -39,6 +39,7 @@ class SubProjectBilling(Base):
     __tablename__ = "sub_project_billings"
 
     id             = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
     sub_project_id = Column(Integer, ForeignKey("sub_projects.id"), nullable=False)
     ledger_entry_id = Column(Integer, ForeignKey("ledger_entries.id"), nullable=True)
     billing_date   = Column(Date, nullable=False)
@@ -77,14 +78,20 @@ class ContractorKasbon(Base):
     amount         = Column(Numeric(12, 2), nullable=False)
     notes          = Column(Text)
     created_at     = Column(DateTime, server_default=func.now())
+    transferred_to  = Column(String(150), nullable=True)
+    bank_account    = Column(String(50),  nullable=True)
 
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
     sub_project = relationship("SubProject", back_populates="contractor_kasbons")
+    ledger_entry_id = Column(Integer, ForeignKey("ledger_entries.id"), nullable=True)
+    
     
     
 class WorkerKasbon(Base):
     __tablename__ = "worker_kasbons"
 
     id             = Column(Integer, primary_key=True, index=True)
+    project_id     = Column(Integer, ForeignKey("projects.id"), nullable=True)
     sub_project_id = Column(Integer, ForeignKey("sub_projects.id"), nullable=False)
     kasbon_date    = Column(Date, nullable=False)
     amount         = Column(Numeric(12, 2), nullable=False)

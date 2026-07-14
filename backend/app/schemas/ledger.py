@@ -14,6 +14,7 @@ class LedgerEntryBase(BaseModel):
     project_id:     Optional[int] = None    # ← TAMBAH
     sub_project_id: Optional[int] = None
     purchase_order_id: Optional[int] = None
+    petty_cash_id: Optional[int] = None
     notes:          Optional[str] = None
     source: Optional[str] = "manual"
 
@@ -40,7 +41,8 @@ class LedgerEntryUpdate(BaseModel):
     bank_account:      Optional[str]           = None
     project_id:        Optional[int]           = None
     sub_project_id:    Optional[int]           = None
-    purchase_order_id: Optional[int] = None
+    purchase_order_id: Optional[int]           = None
+    petty_cash_id: Optional[int]               = None
     notes:             Optional[str]           = None
     received_from:     Optional[str]           = None
     gross_amount:      Optional[Decimal]       = None

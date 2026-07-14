@@ -267,6 +267,7 @@ def create_billing(
     net_amount = gross - qris_fee
 
     billing = SubProjectBilling(
+        project_id=payload.project_id,
         sub_project_id=sp_id,
         billing_date=payload.billing_date,
         amount=gross,
@@ -354,10 +355,16 @@ def create_contractor_kasbon(sp_id: int, payload: ContractorKasbonCreate,
     sp = db.query(SubProject).filter(SubProject.id == sp_id).first()
     if not sp:
         raise HTTPException(status_code=404, detail="Sub project not found")
+    
+    print("PAYLOAD DICT:", payload.dict())  # ← debug ini
+    
     kasbon = ContractorKasbon(sub_project_id=sp_id, **payload.dict())
     db.add(kasbon)
     db.commit()
     db.refresh(kasbon)
+    
+    print("SAVED KASBON project_id:", kasbon.project_id)  # ← debug ini
+    
     return kasbon
 
 

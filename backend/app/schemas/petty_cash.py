@@ -11,6 +11,7 @@ class PettyCashCreate(BaseModel):
     given_by:     Optional[str] = None
     bank_account: Optional[str] = None
     notes:        Optional[str] = None
+    project_id: Optional[int] = None
 
 
 class PettyCashSettle(BaseModel):

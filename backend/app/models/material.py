@@ -63,7 +63,7 @@ class SupplierPriceList(Base):
 
 # Update PurchaseOrder — tambah kolom due_date & payment_link:
 # due_date = Column(Date)
-# linked_ledger_id = Column(Integer, ForeignKey("ledger_entries.id"), nullable=True)
+
 
 
 # ─── Purchase Order (Header Nota) ─────────────────────────
@@ -82,7 +82,7 @@ class PurchaseOrder(Base):
     receipt_image_url = Column(String(500), nullable=True)
     notes          = Column(Text)
     due_date       = Column(Date, nullable=True)
-    linked_ledger_id = Column(Integer, nullable=True)
+    
 
     total_gross    = Column(Numeric(15, 2), default=0)
     total_discount = Column(Numeric(15, 2), default=0)

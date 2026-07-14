@@ -47,6 +47,7 @@ class LedgerEntry(Base):
     wage_payment_id = Column(Integer, ForeignKey("wage_payments.id"), nullable=True)
     purchase_order_id = Column(Integer, ForeignKey("purchase_orders.id"), nullable=True)
     project_id   = Column(Integer, ForeignKey("projects.id"), nullable=True)
+    petty_cash_id = Column(Integer, ForeignKey("petty_cash.id"), nullable=True)
     
     
 

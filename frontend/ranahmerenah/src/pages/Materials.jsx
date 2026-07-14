@@ -8,6 +8,8 @@ import { baseURL } from "../api/client";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import Modal from "../components/ui/Modal";
+import POPaymentForm from "./POPaymentForm";
+import SupplierAgingReport from "./SupplierAgingReport";
 import {
   formatRupiah,
   formatDate,
@@ -51,6 +53,7 @@ const UNIT_OPTIONS = [
   "pak",
   "truck",
   "trip",
+  "engkel",
   "lainnya",
 ];
 
@@ -1025,69 +1028,10 @@ function PurchaseOrderForm({
 function ExpandedPODetail({ order, onRefresh, suppliers }) {
   const qc = useQueryClient();
   const [tab, setTab] = useState("items");
-  const [payForm, setPayForm] = useState({
-    payment_date: new Date().toISOString().split("T")[0],
-    amount: "",
-    paid_by: "",
-    bank_account: "",
-    payment_method: "transfer",
-    notes: "",
-  });
-  const setPF = (k, v) => setPayForm((p) => ({ ...p, [k]: v }));
 
   const { data: payments = [], refetch } = useQuery({
     queryKey: ["po-payments", order.id],
     queryFn: () => materialsApi.getPOPayments(order.id),
-  });
-
-  const addPayment = useMutation({
-    mutationFn: async (data) => {
-      // 1. Catat ke ledger dulu — dapatkan ledger entry id
-      const supplier = suppliers?.find((s) => s.id === order.supplier_id);
-      const poLabel = `PO-${String(order.id).padStart(5, "0")}`;
-      const suppName = supplier?.store_name || order.paid_by || "Supplier";
-
-      const ledgerEntry = await ledgerApi.createExpense({
-        entry_date: data.payment_date,
-        entry_type: "expense",
-        description: `${poLabel} · ${suppName}`,
-        paid_to: data.paid_by || suppName,
-        gross_expense: data.amount,
-        discount_received: 0,
-        payment_method: data.payment_method || "transfer",
-        bank_account: data.bank_account || null,
-        project_id: order.project_id || null,
-        sub_project_id: order.sub_project_id || null,
-        purchase_order_id: order.id,
-        source: "po_payment",
-        notes: data.notes || null,
-      });
-
-      // 2. Simpan PO payment dengan ledger_entry_id
-      const payment = await materialsApi.addPOPayment(order.id, {
-        ...data,
-        ledger_entry_id: ledgerEntry.id,
-      });
-
-      return payment;
-    },
-    onSuccess: () => {
-      refetch();
-      qc.invalidateQueries({ queryKey: ["purchase-orders"] });
-      qc.invalidateQueries({ queryKey: ["ledger"] });
-      qc.invalidateQueries({ queryKey: ["ledger-summary"] });
-      onRefresh();
-      setPayForm({
-        payment_date: new Date().toISOString().split("T")[0],
-        amount: "",
-        paid_by: "",
-        bank_account: "",
-        payment_method: "transfer",
-        notes: "",
-      });
-      toast.success("Pembayaran dicatat & masuk ledger!");
-    },
-    onError: (e) => toast.error(e.message),
   });
 
   const delPayment = useMutation({
@@ -1123,16 +1067,6 @@ function ExpandedPODetail({ order, onRefresh, suppliers }) {
   const remaining = totalNet - totalPaid;
   const pctPaid =
     totalNet > 0 ? Math.min(100, (totalPaid / totalNet) * 100) : 0;
-
-  const handleAddPayment = () => {
-    const amt = parseFloat(String(payForm.amount).replace(/\D/g, "")) || 0;
-    if (!amt) return toast.error("Jumlah pembayaran harus diisi");
-    if (!payForm.payment_date) return toast.error("Tanggal harus diisi");
-    addPayment.mutate({ ...payForm, amount: amt });
-  };
-
-  const fI =
-    "text-xs border border-gray-200 rounded-lg px-2.5 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 w-full";
 
   return (
     <div className="border-t border-gray-100">
@@ -1405,99 +1339,18 @@ function ExpandedPODetail({ order, onRefresh, suppliers }) {
             </table>
           )}
 
-          {/* Add payment form */}
-          {remaining > 0 || payments.length === 0 ? (
-            <div className="px-4 py-3 border-t border-gray-100 bg-blue-50/30">
-              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                + Catat Pembayaran
-                {remaining > 0 && (
-                  <span className="ml-2 text-blue-500 normal-case font-normal">
-                    Sisa {formatRupiah(remaining)}
-                  </span>
-                )}
-              </div>
-              <div className="grid grid-cols-6 gap-2 items-end">
-                <div>
-                  <div className="text-xs text-gray-400 mb-1">Tanggal *</div>
-                  <input
-                    type="date"
-                    value={payForm.payment_date}
-                    onChange={(e) => setPF("payment_date", e.target.value)}
-                    className={fI}
-                  />
-                </div>
-                <div>
-                  <div className="text-xs text-gray-400 mb-1">Jumlah *</div>
-                  <div className="relative">
-                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">
-                      Rp
-                    </span>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={
-                        payForm.amount
-                          ? new Intl.NumberFormat("id-ID").format(
-                              String(payForm.amount).replace(/\D/g, ""),
-                            )
-                          : ""
-                      }
-                      onChange={(e) =>
-                        setPF("amount", e.target.value.replace(/\D/g, ""))
-                      }
-                      placeholder="0"
-                      className={`${fI} pl-7`}
-                    />
-                  </div>
-                </div>
-                <div>
-                  <div className="text-xs text-gray-400 mb-1">Dibayar Oleh</div>
-                  <input
-                    type="text"
-                    value={payForm.paid_by}
-                    onChange={(e) => setPF("paid_by", e.target.value)}
-                    placeholder="Nama / perusahaan"
-                    className={fI}
-                  />
-                </div>
-                <div>
-                  <div className="text-xs text-gray-400 mb-1">Bank</div>
-                  <input
-                    type="text"
-                    value={payForm.bank_account}
-                    onChange={(e) => setPF("bank_account", e.target.value)}
-                    placeholder="BCA, Mandiri..."
-                    className={fI}
-                  />
-                </div>
-                <div>
-                  <div className="text-xs text-gray-400 mb-1">Catatan</div>
-                  <input
-                    type="text"
-                    value={payForm.notes}
-                    onChange={(e) => setPF("notes", e.target.value)}
-                    placeholder="optional"
-                    className={fI}
-                  />
-                </div>
-                <div>
-                  <button
-                    onClick={handleAddPayment}
-                    disabled={addPayment.isPending}
-                    className="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg transition-all disabled:opacity-50"
-                  >
-                    {addPayment.isPending ? "..." : "Simpan"}
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="px-4 py-3 bg-emerald-50 border-t border-emerald-100">
-              <p className="text-xs text-emerald-600 font-medium text-center">
-                ✓ PO ini sudah lunas
-              </p>
-            </div>
-          )}
+          <POPaymentForm
+            order={order}
+            remaining={remaining}
+            suppliers={suppliers}
+            onPaymentSaved={() => {
+              refetch();
+              qc.invalidateQueries({ queryKey: ["purchase-orders"] });
+              qc.invalidateQueries({ queryKey: ["ledger"] });
+              qc.invalidateQueries({ queryKey: ["ledger-summary"] });
+              onRefresh();
+            }}
+          />
         </div>
       )}
     </div>
@@ -2153,6 +2006,16 @@ export default function Materials() {
             >
               <BarChart3 size={13} /> Material Report
             </button>
+            <button
+              onClick={() => setPageTab("aging")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                pageTab === "aging"
+                  ? "bg-white text-gray-900 shadow-sm"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              <Receipt size={13} /> Hutang Supplier
+            </button>
           </div>
           {pageTab === "po" && (
             <Button
@@ -2503,6 +2366,7 @@ export default function Materials() {
       {pageTab === "report" && (
         <MaterialReport projects={projects} suppliers={suppliers} />
       )}
+      {pageTab === "aging" && <SupplierAgingReport />}
     </div>
   );
 }

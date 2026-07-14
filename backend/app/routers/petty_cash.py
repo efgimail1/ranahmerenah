@@ -19,11 +19,21 @@ router = APIRouter(prefix="/sub-projects", tags=["Petty Cash"])
 
 
 def pc_to_response(pc: PettyCash, db: Session) -> PettyCashResponse:
+    from app.models.ledger import LedgerEntry, EntryType
+
+    # Semua pengeluaran via kas ini tercatat di ledger_entries
+    # (baik dari PO payment maupun expense langsung dari Ledger page)
+    # Tidak perlu hitung po_payments terpisah karena PO payment
+    # sudah otomatis membuat ledger entry dengan petty_cash_id yang sama
     total_used = (
-        db.query(func.coalesce(func.sum(POPayment.amount), 0))
-        .filter(POPayment.petty_cash_id == pc.id)
+        db.query(func.coalesce(func.sum(LedgerEntry.net_expense), 0))
+        .filter(
+            LedgerEntry.petty_cash_id == pc.id,
+            LedgerEntry.entry_type == EntryType.expense,
+        )
         .scalar()
     )
+
     total_used = Decimal(str(total_used or 0))
     remaining = Decimal(str(pc.amount or 0)) - total_used
 
