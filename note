@@ -20,7 +20,7 @@ git push -u origin project-for-kontraktor
 
 
 
-
+setiap ada perubahan apa yang wajib menjalankan docker compose up -d --build ? apkah kalau ada perubahan di backend, frontend, db ?
 
 - timesheets di workers belum di bayar, hanya 1 workers yang di anggap sudah di bayar karena pembayaran nya batch.
 
