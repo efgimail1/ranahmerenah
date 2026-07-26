@@ -41,6 +41,7 @@ import {
   Wallet,
   ArrowDownCircle,
   Copy,
+  Search,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -2831,6 +2832,20 @@ function TabWorkers({ project }) {
   const [editForm, setEditForm] = useState({});
   const setEF = (k, v) => setEditForm((p) => ({ ...p, [k]: v }));
   const [payrollOpen, setPayrollOpen] = useState(false);
+  // Accordion: sub project mana saja yang lagi terbuka. Default kosong
+  // (semua tertutup) — mengurangi panjang scroll saat sub project banyak.
+  const [expandedSubProjects, setExpandedSubProjects] = useState(new Set());
+  const toggleSubProject = (spId) => {
+    setExpandedSubProjects((prev) => {
+      const next = new Set(prev);
+      if (next.has(spId)) next.delete(spId);
+      else next.add(spId);
+      return next;
+    });
+  };
+
+  // Search nama worker — lintas semua sub project
+  const [workerSearch, setWorkerSearch] = useState("");
   const [form, setForm] = useState({
     worker_id: "",
     rate_type: "daily",
@@ -2909,13 +2924,20 @@ function TabWorkers({ project }) {
 
   const set = (f, v) => setForm((p) => ({ ...p, [f]: v }));
 
-  // Cek apakah worker sudah di-assign ke sub project yang sama
-  const isAlreadyAssigned = (workerId, subProjectId) => {
-    return assignments.some(
-      (a) =>
-        a.worker_id === parseInt(workerId) &&
-        a.sub_project_id === (subProjectId ? parseInt(subProjectId) : null),
-    );
+  // Cek apakah worker punya assignment yang tanggalnya BENTROK di sub
+  // project yang sama. Assignment lama yang sudah ditutup (end_date sudah
+  // lewat) tidak dianggap bentrok.
+  const isAlreadyAssigned = (workerId, subProjectId, startDate, endDate) => {
+    const newStart = startDate || "0000-01-01";
+    const newEnd = endDate || "9999-12-31";
+    return assignments.some((a) => {
+      if (a.worker_id !== parseInt(workerId)) return false;
+      if (a.sub_project_id !== (subProjectId ? parseInt(subProjectId) : null))
+        return false;
+      const aStart = a.start_date || "0000-01-01";
+      const aEnd = a.end_date || "9999-12-31";
+      return newStart <= aEnd && aStart <= newEnd;
+    });
   };
 
   const createAssignment = useMutation({
@@ -2981,9 +3003,18 @@ function TabWorkers({ project }) {
       return toast.error("Pilih sub project untuk project kontraktor");
     }
 
-    // Cek duplikat assignment (worker + sub project yang sama)
-    if (isAlreadyAssigned(form.worker_id, form.sub_project_id)) {
-      return toast.error("Worker ini sudah di-assign ke sub project yang sama");
+    // Cek duplikat assignment (worker + sub project yang sama, tanggal bentrok)
+    if (
+      isAlreadyAssigned(
+        form.worker_id,
+        form.sub_project_id,
+        form.start_date,
+        form.end_date,
+      )
+    ) {
+      return toast.error(
+        "Worker ini sudah punya assignment aktif yang tanggalnya bentrok di sub project yang sama",
+      );
     }
 
     createAssignment.mutate({
@@ -3013,11 +3044,18 @@ function TabWorkers({ project }) {
 
   const dailyWorkers = assignments.filter((a) => a.rate_type === "daily");
 
+  const searchTerm = workerSearch.trim().toLowerCase();
+
   const grouped = isContractor
-    ? subProjects.map((sp) => ({
-        subProject: sp,
-        workers: assignments.filter((a) => a.sub_project_id === sp.id),
-      }))
+    ? subProjects.map((sp) => {
+        const spWorkers = assignments.filter((a) => a.sub_project_id === sp.id);
+        const workers = searchTerm
+          ? spWorkers.filter((a) =>
+              a.worker?.full_name?.toLowerCase().includes(searchTerm),
+            )
+          : spWorkers;
+        return { subProject: sp, workers };
+      })
     : null;
 
   const unassigned = isContractor
@@ -3051,6 +3089,22 @@ function TabWorkers({ project }) {
           </Button>
         </div>
       </div>
+
+      {isContractor && (
+        <div className="relative">
+          <Search
+            size={14}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+          />
+          <input
+            type="text"
+            value={workerSearch}
+            onChange={(e) => setWorkerSearch(e.target.value)}
+            placeholder="Cari nama worker di semua sub project..."
+            className="w-full text-sm border border-gray-200 rounded-lg pl-9 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          />
+        </div>
+      )}
 
       <div className="border border-gray-200 rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
@@ -3128,10 +3182,13 @@ function TabWorkers({ project }) {
                       {allWorkers
                         .filter((w) => w.is_active)
                         .map((w) => {
-                          // Disabled hanya kalau sudah assign ke sub project yang SAMA
+                          // Disabled hanya kalau ada assignment aktif yang
+                          // tanggalnya bentrok di sub project yang SAMA
                           const alreadyAssigned = isAlreadyAssigned(
                             w.id,
                             form.sub_project_id,
+                            form.start_date,
+                            form.end_date,
                           );
                           return (
                             <option
@@ -3280,325 +3337,363 @@ function TabWorkers({ project }) {
                         </div>
                       ) : (
                         grouped
-                          .filter(({ workers }) => workers.length > 0) // ← tambah ini
-                          .map(({ subProject: sp, workers }) => (
-                            <div
-                              key={sp.id}
-                              className="border border-gray-200 rounded-xl overflow-hidden"
-                            >
-                              <div className="flex items-center gap-2 px-4 py-2.5 bg-orange-50 border-b border-orange-200">
-                                <Building2
-                                  size={14}
-                                  className="text-orange-600"
-                                />
-                                <span className="text-sm font-semibold text-orange-700">
-                                  {sp.name}
-                                </span>
-                                <span className="text-xs text-orange-400 ml-1">
-                                  RAB: {formatRupiah(sp.rab_value)}
-                                </span>
-                                <span className="ml-auto text-xs text-orange-500">
-                                  {workers.length} worker
-                                  {workers.length !== 1 ? "s" : ""}
-                                </span>
-                              </div>
-                              <div className="overflow-x-auto">
-                                <table className="w-full">
-                                  <thead>
-                                    <tr className="bg-gray-50 border-b border-gray-200">
-                                      <th className="text-left px-3 py-2 text-xs font-medium text-gray-500 w-8">
-                                        #
-                                      </th>
-                                      <th className="text-left px-2 py-2 text-xs font-medium text-gray-500">
-                                        Worker
-                                      </th>
-                                      <th className="text-left px-2 py-2 text-xs font-medium text-gray-500 w-28">
-                                        Role
-                                      </th>
-                                      <th className="text-left px-2 py-2 text-xs font-medium text-gray-500 w-24">
-                                        Tipe
-                                      </th>
-                                      <th className="text-right px-2 py-2 text-xs font-medium text-gray-500 w-28">
-                                        Rate
-                                      </th>
-                                      <th className="text-left px-2 py-2 text-xs font-medium text-gray-500 w-24">
-                                        Start
-                                      </th>
-                                      <th className="text-left px-2 py-2 text-xs font-medium text-gray-500 w-24">
-                                        End
-                                      </th>
-                                      <th className="text-left px-2 py-2 text-xs font-medium text-gray-500 w-16">
-                                        Status
-                                      </th>
-                                      <th className="text-left px-2 py-2 text-xs font-medium text-gray-500 w-28">
-                                        Payment
-                                      </th>
-                                      <th className="w-8 px-2 py-2"></th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {workers.length === 0 ? (
-                                      <tr>
-                                        <td
-                                          colSpan={10}
-                                          className="px-4 py-4 text-center text-xs text-gray-400 italic"
-                                        >
-                                          Belum ada worker di sub project ini
-                                        </td>
-                                      </tr>
-                                    ) : (
-                                      workers.map((a, i) => (
-                                        <tr
-                                          key={a.id}
-                                          className="border-b border-gray-100 hover:bg-gray-50 transition-colors group"
-                                        >
-                                          <td className="px-3 py-2.5 text-center text-xs text-gray-400">
-                                            {i + 1}
-                                          </td>
-                                          <td className="px-2 py-2.5">
-                                            <div className="flex items-center gap-2">
-                                              <div className="w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center text-xs font-semibold text-emerald-700 shrink-0">
-                                                {a.worker?.full_name
-                                                  ?.split(" ")
-                                                  .slice(0, 2)
-                                                  .map((n) => n[0])
-                                                  .join("")
-                                                  .toUpperCase()}
-                                              </div>
-                                              <span className="text-sm font-medium text-gray-900 truncate">
-                                                {a.worker?.full_name}
-                                              </span>
-                                            </div>
-                                          </td>
-                                          <td className="px-2 py-2.5 text-xs text-gray-500">
-                                            {ROLE_OPTIONS.find(
-                                              (r) => r.value === a.worker?.role,
-                                            )?.label || a.worker?.role}
-                                          </td>
-                                          <td className="px-2 py-2.5 text-xs text-gray-500">
-                                            {RATE_TYPE[a.rate_type]}
-                                          </td>
-                                          <td className="px-2 py-2.5 text-right font-semibold text-gray-900 text-sm">
-                                            {formatRupiah(a.rate_amount)}
-                                          </td>
-                                          <td className="px-2 py-2.5 text-xs text-gray-400">
-                                            {a.start_date
-                                              ? formatDate(a.start_date)
-                                              : "-"}
-                                          </td>
-                                          <td className="px-2 py-2.5 text-xs text-gray-400">
-                                            {a.end_date
-                                              ? formatDate(a.end_date)
-                                              : "-"}
-                                          </td>
-                                          <td className="px-2 py-2.5">
-                                            <Badge
-                                              color={
-                                                a.is_active ? "green" : "gray"
-                                              }
+                          .filter(({ workers }) => workers.length > 0)
+                          .map(({ subProject: sp, workers }) => {
+                            const isOpen =
+                              !!searchTerm || expandedSubProjects.has(sp.id);
+                            return (
+                              <div
+                                key={sp.id}
+                                className="border border-gray-200 rounded-xl overflow-hidden"
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => toggleSubProject(sp.id)}
+                                  className="w-full flex items-center gap-2 px-4 py-2.5 bg-orange-50 border-b border-orange-200 hover:bg-orange-100 transition-colors text-left"
+                                >
+                                  {isOpen ? (
+                                    <ChevronUp
+                                      size={14}
+                                      className="text-orange-600 shrink-0"
+                                    />
+                                  ) : (
+                                    <ChevronDown
+                                      size={14}
+                                      className="text-orange-600 shrink-0"
+                                    />
+                                  )}
+                                  <Building2
+                                    size={14}
+                                    className="text-orange-600"
+                                  />
+                                  <span className="text-sm font-semibold text-orange-700">
+                                    {sp.name}
+                                  </span>
+                                  <span className="text-xs text-orange-400 ml-1">
+                                    RAB: {formatRupiah(sp.rab_value)}
+                                  </span>
+                                  <span className="ml-auto text-xs text-orange-500">
+                                    {workers.length} worker
+                                    {workers.length !== 1 ? "s" : ""}
+                                  </span>
+                                </button>
+                                {isOpen && (
+                                  <div className="overflow-x-auto">
+                                    <table className="w-full">
+                                      <thead>
+                                        <tr className="bg-gray-50 border-b border-gray-200">
+                                          <th className="text-left px-3 py-2 text-xs font-medium text-gray-500 w-8">
+                                            #
+                                          </th>
+                                          <th className="text-left px-2 py-2 text-xs font-medium text-gray-500">
+                                            Worker
+                                          </th>
+                                          <th className="text-left px-2 py-2 text-xs font-medium text-gray-500 w-28">
+                                            Role
+                                          </th>
+                                          <th className="text-left px-2 py-2 text-xs font-medium text-gray-500 w-24">
+                                            Tipe
+                                          </th>
+                                          <th className="text-right px-2 py-2 text-xs font-medium text-gray-500 w-28">
+                                            Rate
+                                          </th>
+                                          <th className="text-left px-2 py-2 text-xs font-medium text-gray-500 w-24">
+                                            Start
+                                          </th>
+                                          <th className="text-left px-2 py-2 text-xs font-medium text-gray-500 w-24">
+                                            End
+                                          </th>
+                                          <th className="text-left px-2 py-2 text-xs font-medium text-gray-500 w-16">
+                                            Status
+                                          </th>
+                                          <th className="text-left px-2 py-2 text-xs font-medium text-gray-500 w-28">
+                                            Payment
+                                          </th>
+                                          <th className="w-8 px-2 py-2"></th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {workers.length === 0 ? (
+                                          <tr>
+                                            <td
+                                              colSpan={10}
+                                              className="px-4 py-4 text-center text-xs text-gray-400 italic"
                                             >
-                                              {a.is_active
-                                                ? "Active"
-                                                : "Inactive"}
-                                            </Badge>
-                                          </td>
-                                          <td className="px-2 py-2.5">
-                                            {a.rate_type === "daily" && (
-                                              <div className="space-y-0.5">
-                                                <button
-                                                  type="button"
-                                                  onClick={() =>
-                                                    setTimesheetModal(a)
+                                              Belum ada worker di sub project
+                                              ini
+                                            </td>
+                                          </tr>
+                                        ) : (
+                                          workers.map((a, i) => (
+                                            <tr
+                                              key={a.id}
+                                              className="border-b border-gray-100 hover:bg-gray-50 transition-colors group"
+                                            >
+                                              <td className="px-3 py-2.5 text-center text-xs text-gray-400">
+                                                {i + 1}
+                                              </td>
+                                              <td className="px-2 py-2.5">
+                                                <div className="flex items-center gap-2">
+                                                  <div className="w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center text-xs font-semibold text-emerald-700 shrink-0">
+                                                    {a.worker?.full_name
+                                                      ?.split(" ")
+                                                      .slice(0, 2)
+                                                      .map((n) => n[0])
+                                                      .join("")
+                                                      .toUpperCase()}
+                                                  </div>
+                                                  <span className="text-sm font-medium text-gray-900 truncate">
+                                                    {a.worker?.full_name}
+                                                  </span>
+                                                </div>
+                                              </td>
+                                              <td className="px-2 py-2.5 text-xs text-gray-500">
+                                                {ROLE_OPTIONS.find(
+                                                  (r) =>
+                                                    r.value === a.worker?.role,
+                                                )?.label || a.worker?.role}
+                                              </td>
+                                              <td className="px-2 py-2.5 text-xs text-gray-500">
+                                                {RATE_TYPE[a.rate_type]}
+                                              </td>
+                                              <td className="px-2 py-2.5 text-right font-semibold text-gray-900 text-sm">
+                                                {formatRupiah(a.rate_amount)}
+                                              </td>
+                                              <td className="px-2 py-2.5 text-xs text-gray-400">
+                                                {a.start_date
+                                                  ? formatDate(a.start_date)
+                                                  : "-"}
+                                              </td>
+                                              <td className="px-2 py-2.5 text-xs text-gray-400">
+                                                {a.end_date
+                                                  ? formatDate(a.end_date)
+                                                  : "-"}
+                                              </td>
+                                              <td className="px-2 py-2.5">
+                                                <Badge
+                                                  color={
+                                                    a.is_active
+                                                      ? "green"
+                                                      : "gray"
                                                   }
-                                                  className="text-xs px-2 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded hover:bg-blue-100 transition-all whitespace-nowrap"
                                                 >
-                                                  📅 Timesheet
-                                                </button>
-                                                {(() => {
-                                                  const s = getWorkerPayHistory(
-                                                    a.worker?.full_name,
-                                                  );
-                                                  return s.lastDate ? (
-                                                    <div className="text-xs text-gray-400">
-                                                      Terakhir:{" "}
-                                                      {formatDate(s.lastDate)}
-                                                    </div>
-                                                  ) : (
-                                                    <div className="text-xs text-gray-400">
-                                                      Belum dibayar
-                                                    </div>
-                                                  );
-                                                })()}
-                                              </div>
-                                            )}
-                                            {a.rate_type === "fixed" &&
-                                              (() => {
-                                                const s = getWorkerPayHistory(
-                                                  a.worker?.full_name,
-                                                );
-                                                const rate = parseFloat(
-                                                  a.rate_amount || 0,
-                                                );
-                                                const pct =
-                                                  rate > 0
-                                                    ? Math.min(
-                                                        (s.total / rate) * 100,
-                                                        100,
-                                                      )
-                                                    : 0;
-                                                const isLunas = pct >= 100;
-                                                return (
+                                                  {a.is_active
+                                                    ? "Active"
+                                                    : "Inactive"}
+                                                </Badge>
+                                              </td>
+                                              <td className="px-2 py-2.5">
+                                                {a.rate_type === "daily" && (
                                                   <div className="space-y-0.5">
                                                     <button
                                                       type="button"
-                                                      onClick={() => {
-                                                        if (!isLunas)
-                                                          setLumpSumModal(a);
-                                                      }}
-                                                      disabled={isLunas}
-                                                      className={`text-xs px-2 py-1 border rounded whitespace-nowrap ${
-                                                        isLunas
-                                                          ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
-                                                          : "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
-                                                      }`}
+                                                      onClick={() =>
+                                                        setTimesheetModal(a)
+                                                      }
+                                                      className="text-xs px-2 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded hover:bg-blue-100 transition-all whitespace-nowrap"
                                                     >
-                                                      {isLunas
-                                                        ? "✓ Lunas"
-                                                        : "💰 Pay"}
+                                                      📅 Timesheet
                                                     </button>
-                                                    {s.total > 0 && (
-                                                      <div
-                                                        className={`text-xs font-medium ${isLunas ? "text-emerald-600" : "text-amber-600"}`}
-                                                      >
-                                                        {formatRupiah(s.total)}
-                                                      </div>
-                                                    )}
-                                                  </div>
-                                                );
-                                              })()}
-                                            {a.rate_type === "per_unit" && (
-                                              <button
-                                                type="button"
-                                                onClick={() =>
-                                                  setPerUnitModal(a)
-                                                }
-                                                className="text-xs px-2 py-1 bg-purple-50 text-purple-700 border border-purple-200 rounded hover:bg-purple-100 whitespace-nowrap"
-                                              >
-                                                📦 Units
-                                              </button>
-                                            )}
-                                          </td>
-                                          <td className="px-2 py-2.5 text-center">
-                                            <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                              {/* Edit */}
-                                              <button
-                                                type="button"
-                                                title="Edit assignment"
-                                                onClick={() => {
-                                                  setEditModal(a);
-                                                  setEditForm({
-                                                    rate_type: a.rate_type,
-                                                    rate_amount: String(
-                                                      Math.round(
-                                                        parseFloat(
-                                                          a.rate_amount || 0,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                    start_date: a.start_date
-                                                      ? a.start_date.substring(
-                                                          0,
-                                                          10,
-                                                        )
-                                                      : "",
-                                                    end_date: a.end_date
-                                                      ? a.end_date.substring(
-                                                          0,
-                                                          10,
-                                                        )
-                                                      : "",
-                                                    sub_project_id:
-                                                      a.sub_project_id || "",
-                                                  });
-                                                }}
-                                                className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-all"
-                                              >
-                                                <Pencil size={12} />
-                                              </button>
-
-                                              {/* Duplicate */}
-                                              <button
-                                                type="button"
-                                                title="Duplicate assignment"
-                                                onClick={() => {
-                                                  setDupModal(a);
-                                                  setEditForm({
-                                                    rate_type: a.rate_type,
-                                                    rate_amount: String(
-                                                      Math.round(
-                                                        parseFloat(
-                                                          a.rate_amount || 0,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                    start_date: "",
-                                                    end_date: "",
-                                                    sub_project_id: "",
-                                                  });
-                                                }}
-                                                className="p-1 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded transition-all"
-                                              >
-                                                <Copy size={12} />
-                                              </button>
-
-                                              {/* Delete */}
-                                              {(() => {
-                                                const s = getWorkerPayHistory(
-                                                  a.worker?.full_name,
-                                                );
-                                                return s.total > 0 ? (
-                                                  <button
-                                                    type="button"
-                                                    title="Tidak bisa hapus — sudah ada pembayaran"
-                                                    onClick={() =>
-                                                      toast.error(
-                                                        `Tidak bisa hapus — sudah ada pembayaran ${formatRupiah(s.total)}`,
-                                                        { duration: 4000 },
-                                                      )
-                                                    }
-                                                    className="p-1 text-gray-200 cursor-not-allowed"
-                                                  >
-                                                    <X size={12} />
-                                                  </button>
-                                                ) : (
-                                                  <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                      if (
-                                                        confirm(
-                                                          `Remove ${a.worker?.full_name}?`,
-                                                        )
-                                                      )
-                                                        deleteAssignment.mutate(
-                                                          a.id,
+                                                    {(() => {
+                                                      const s =
+                                                        getWorkerPayHistory(
+                                                          a.worker?.full_name,
                                                         );
-                                                    }}
-                                                    className="p-1 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded transition-all"
+                                                      return s.lastDate ? (
+                                                        <div className="text-xs text-gray-400">
+                                                          Terakhir:{" "}
+                                                          {formatDate(
+                                                            s.lastDate,
+                                                          )}
+                                                        </div>
+                                                      ) : (
+                                                        <div className="text-xs text-gray-400">
+                                                          Belum dibayar
+                                                        </div>
+                                                      );
+                                                    })()}
+                                                  </div>
+                                                )}
+                                                {a.rate_type === "fixed" &&
+                                                  (() => {
+                                                    const s =
+                                                      getWorkerPayHistory(
+                                                        a.worker?.full_name,
+                                                      );
+                                                    const rate = parseFloat(
+                                                      a.rate_amount || 0,
+                                                    );
+                                                    const pct =
+                                                      rate > 0
+                                                        ? Math.min(
+                                                            (s.total / rate) *
+                                                              100,
+                                                            100,
+                                                          )
+                                                        : 0;
+                                                    const isLunas = pct >= 100;
+                                                    return (
+                                                      <div className="space-y-0.5">
+                                                        <button
+                                                          type="button"
+                                                          onClick={() => {
+                                                            if (!isLunas)
+                                                              setLumpSumModal(
+                                                                a,
+                                                              );
+                                                          }}
+                                                          disabled={isLunas}
+                                                          className={`text-xs px-2 py-1 border rounded whitespace-nowrap ${
+                                                            isLunas
+                                                              ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
+                                                              : "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+                                                          }`}
+                                                        >
+                                                          {isLunas
+                                                            ? "✓ Lunas"
+                                                            : "💰 Pay"}
+                                                        </button>
+                                                        {s.total > 0 && (
+                                                          <div
+                                                            className={`text-xs font-medium ${isLunas ? "text-emerald-600" : "text-amber-600"}`}
+                                                          >
+                                                            {formatRupiah(
+                                                              s.total,
+                                                            )}
+                                                          </div>
+                                                        )}
+                                                      </div>
+                                                    );
+                                                  })()}
+                                                {a.rate_type === "per_unit" && (
+                                                  <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                      setPerUnitModal(a)
+                                                    }
+                                                    className="text-xs px-2 py-1 bg-purple-50 text-purple-700 border border-purple-200 rounded hover:bg-purple-100 whitespace-nowrap"
                                                   >
-                                                    <X size={12} />
+                                                    📦 Units
                                                   </button>
-                                                );
-                                              })()}
-                                            </div>
-                                          </td>
-                                        </tr>
-                                      ))
-                                    )}
-                                  </tbody>
-                                </table>
+                                                )}
+                                              </td>
+                                              <td className="px-2 py-2.5 text-center">
+                                                <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                  {/* Edit */}
+                                                  <button
+                                                    type="button"
+                                                    title="Edit assignment"
+                                                    onClick={() => {
+                                                      setEditModal(a);
+                                                      setEditForm({
+                                                        rate_type: a.rate_type,
+                                                        rate_amount: String(
+                                                          Math.round(
+                                                            parseFloat(
+                                                              a.rate_amount ||
+                                                                0,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                        start_date: a.start_date
+                                                          ? a.start_date.substring(
+                                                              0,
+                                                              10,
+                                                            )
+                                                          : "",
+                                                        end_date: a.end_date
+                                                          ? a.end_date.substring(
+                                                              0,
+                                                              10,
+                                                            )
+                                                          : "",
+                                                        sub_project_id:
+                                                          a.sub_project_id ||
+                                                          "",
+                                                      });
+                                                    }}
+                                                    className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-all"
+                                                  >
+                                                    <Pencil size={12} />
+                                                  </button>
+
+                                                  {/* Duplicate */}
+                                                  <button
+                                                    type="button"
+                                                    title="Duplicate assignment"
+                                                    onClick={() => {
+                                                      setDupModal(a);
+                                                      setEditForm({
+                                                        rate_type: a.rate_type,
+                                                        rate_amount: String(
+                                                          Math.round(
+                                                            parseFloat(
+                                                              a.rate_amount ||
+                                                                0,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                        start_date: "",
+                                                        end_date: "",
+                                                        sub_project_id: "",
+                                                      });
+                                                    }}
+                                                    className="p-1 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded transition-all"
+                                                  >
+                                                    <Copy size={12} />
+                                                  </button>
+
+                                                  {/* Delete */}
+                                                  {(() => {
+                                                    const s =
+                                                      getWorkerPayHistory(
+                                                        a.worker?.full_name,
+                                                      );
+                                                    return s.total > 0 ? (
+                                                      <button
+                                                        type="button"
+                                                        title="Tidak bisa hapus — sudah ada pembayaran"
+                                                        onClick={() =>
+                                                          toast.error(
+                                                            `Tidak bisa hapus — sudah ada pembayaran ${formatRupiah(s.total)}`,
+                                                            { duration: 4000 },
+                                                          )
+                                                        }
+                                                        className="p-1 text-gray-200 cursor-not-allowed"
+                                                      >
+                                                        <X size={12} />
+                                                      </button>
+                                                    ) : (
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                          if (
+                                                            confirm(
+                                                              `Remove ${a.worker?.full_name}?`,
+                                                            )
+                                                          )
+                                                            deleteAssignment.mutate(
+                                                              a.id,
+                                                            );
+                                                        }}
+                                                        className="p-1 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded transition-all"
+                                                      >
+                                                        <X size={12} />
+                                                      </button>
+                                                    );
+                                                  })()}
+                                                </div>
+                                              </td>
+                                            </tr>
+                                          ))
+                                        )}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                )}
                               </div>
-                            </div>
-                          ))
+                            );
+                          })
                       )}
 
                       {unassigned.length > 0 && (

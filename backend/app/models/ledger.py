@@ -38,7 +38,7 @@ class LedgerEntry(Base):
     discount_received = Column(Numeric(15, 2), default=0)
     net_expense = Column(Numeric(15, 2))
 
-    notes = Column(Text)
+    notes = Column(Text)    
 
     # foreign keys
     sub_project_id = Column(Integer, ForeignKey("sub_projects.id"), nullable=True)
@@ -56,6 +56,7 @@ class LedgerEntry(Base):
     purchase_order = relationship("PurchaseOrder", back_populates="ledger_entry")
     material = relationship("Material", back_populates="ledger_entry")
     wage_payment = relationship("WagePayment", back_populates="ledger_entry")
+    po_payments = relationship("POPayment",primaryjoin="LedgerEntry.id == foreign(POPayment.ledger_entry_id)",viewonly=True,)
     
     __table_args__ = (
         Index("idx_ledger_entries_subproject_type_source", "sub_project_id", "entry_type", "source"),

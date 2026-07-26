@@ -22,10 +22,11 @@ git push -u origin project-for-kontraktor
 
 
 
-- sdh d revisi nti cek pas sabtu (waktu payroll run pas pilih metode bayar tidak ada pilihan bank nya, juga di pilih masuk ke sub projects apa)
+- timesheets di workers belum di bayar, hanya 1 workers yang di anggap sudah di bayar karena pembayaran nya batch.
 
-- pembayaran di PO sistem select gitu, di pilih PO mana saja yang mau di bayar sekaligus. gimana best practicenya. di select mana PO saja, nanti total invoicenya di akumulasi ada berapa jumlahnya, lalu kita input tanggal bayar, di bayar oleh siapa, bank apa, catatan, nanti otomatis masuk ke ledger jadi 1, tetapi di PO nya tertulis sudah di bayar dan di kolom pembayaran terisi
-ataukah harus membuat menu baru ?
+
+
+- waktu input item di PO apakah bisa ambil harga terakhir dari PO ?
 
 - bisa upload bon lebih dari 1
 

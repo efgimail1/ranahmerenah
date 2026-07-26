@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 from typing import List, Optional
 from datetime import date
@@ -11,6 +11,7 @@ from app.schemas.ledger import (
     LedgerIncomeCreate, LedgerExpenseCreate,
     LedgerEntryUpdate, LedgerEntryResponse
 )
+from app.models.material import POPayment, PurchaseOrder
 
 router = APIRouter(prefix="/ledger", tags=["Ledger"])
 QRIS_FEE_RATE = Decimal("0.003")
@@ -170,6 +171,26 @@ def delete_entry(entry_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Entry not found")
 
     payment_id = entry.project_payment_id
+    
+    linked_po_payments = (
+        db.query(POPayment).filter(POPayment.ledger_entry_id == entry_id).all()
+    )
+    affected_order_ids = {p.order_id for p in linked_po_payments}
+    for p in linked_po_payments:
+        db.delete(p)
+    db.flush()
+
+    for order_id in affected_order_ids:
+        order = (
+            db.query(PurchaseOrder)
+            .options(joinedload(PurchaseOrder.payments))
+            .filter(PurchaseOrder.id == order_id)
+            .first()
+        )
+        if order:
+            total_paid = sum(float(p.amount or 0) for p in order.payments)
+            total_net = float(order.total_net or 0)
+            order.is_paid = total_net > 0 and total_paid >= total_net
 
     db.delete(entry)
     db.flush()

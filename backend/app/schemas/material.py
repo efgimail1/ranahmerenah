@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import date
 from decimal import Decimal
@@ -219,3 +219,16 @@ class POPaymentResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class POBatchPaymentCreate(BaseModel):
+    order_ids:      List[int] = Field(..., min_items=1)
+    payment_date:   date
+    paid_by:        Optional[str] = None
+    bank_account:   Optional[str] = None
+    payment_method: Optional[str] = "transfer"
+    notes:          Optional[str] = None
+
+class POBatchPaymentResponse(BaseModel):
+    ledger_entry_id: int
+    total_amount:    Decimal
+    payments:        List[POPaymentResponse]

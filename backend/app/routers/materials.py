@@ -31,7 +31,10 @@ from app.schemas.material import (
     SupplierPriceListResponse,
     POPaymentCreate,
     POPaymentResponse,
+    POBatchPaymentCreate,
+    POBatchPaymentResponse,
 )
+from app.models.ledger import LedgerEntry, EntryType, PaymentMethod
 
 
 router = APIRouter(tags=["Materials"])
@@ -490,7 +493,7 @@ def add_po_payment(
     payment = POPayment(order_id=order_id, **payload.dict())
     db.add(payment)
     db.flush()
-    
+
     # Recompute total_paid and update is_paid on PO
     db.refresh(order)
     total_paid = sum(float(p.amount or 0) for p in order.payments)
@@ -499,7 +502,6 @@ def add_po_payment(
     db.commit()
     db.refresh(payment)
     return payment
-
 
 
 @router.delete(
@@ -533,8 +535,104 @@ def delete_po_payment(order_id: int, payment_id: int, db: Session = Depends(get_
     db.commit()
 
 
-UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "uploads", "receipts")
+@router.post(
+    "/purchase-orders/batch-payments",
+    response_model=POBatchPaymentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_batch_payment(payload: POBatchPaymentCreate, db: Session = Depends(get_db)):
+    order_ids = list(dict.fromkeys(payload.order_ids))
+    orders = (
+        db.query(PurchaseOrder)
+        .options(joinedload(PurchaseOrder.payments), joinedload(PurchaseOrder.supplier))
+        .filter(PurchaseOrder.id.in_(order_ids))
+        .all()
+    )
+    if len(orders) != len(order_ids):
+        raise HTTPException(status_code=404, detail="Ada PO yang tidak ditemukan")
+    supplier_ids = {o.supplier_id for o in orders}
+    if len(supplier_ids) > 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Batch payment hanya boleh untuk PO dari 1 supplier yang sama",
+        )
+    supplier = orders[0].supplier
+    total_amount = Decimal("0")
+    remaining_by_order = {}
+    for o in orders:
+        total_paid = sum(Decimal(str(p.amount or 0)) for p in (o.payments or []))
+        total_net = Decimal(str(o.total_net or 0))
+        sisa = total_net - total_paid
+        if sisa <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"PO-{str(o.id).zfill(5)} sudah lunas, tidak bisa dimasukkan ke batch payment",
+            )
+        remaining_by_order[o.id] = sisa
+        total_amount += sisa
+    po_labels = ", ".join(f"PO-{str(o.id).zfill(5)}" for o in orders)
+    supplier_name = supplier.store_name if supplier else "Supplier"
+    description = f"Pembayaran {len(orders)} PO - {supplier_name}"
+    auto_note = f"Mencakup: {po_labels}"
+    combined_notes = f"{payload.notes}\n{auto_note}" if payload.notes else auto_note
+
+# Kalau semua PO yang dipilih kebetulan 1 project/sub-project yang sama,
+    # ikutkan di ledger entry. Kalau campur, biarkan null (lebih jujur
+    # daripada asal pilih salah satu dan bikin laporan project salah).
+    project_ids = {o.project_id for o in orders if o.project_id}
+    sub_project_ids = {o.sub_project_id for o in orders if o.sub_project_id}
+    entry_project_id = project_ids.pop() if len(project_ids) == 1 else None
+    entry_sub_project_id = sub_project_ids.pop() if len(sub_project_ids) == 1 else None
+    
+    entry = LedgerEntry(
+        entry_date=payload.payment_date,
+        entry_type=EntryType.expense,
+        description=description,
+        paid_to=supplier_name,
+        gross_expense=total_amount,
+        discount_received=Decimal("0"),
+        net_expense=total_amount,
+        net_amount=total_amount,
+        payment_method=PaymentMethod(payload.payment_method or "transfer"), 
+        bank_account=payload.bank_account,
+        project_id=entry_project_id,
+        sub_project_id=entry_sub_project_id,
+        notes=combined_notes,
+        source="po_batch_payment",
+    )
+    db.add(entry)
+    db.flush()
+    created_payments = []
+    for o in orders:
+        payment = POPayment(
+            order_id=o.id,
+            payment_date=payload.payment_date,
+            amount=remaining_by_order[o.id],
+            paid_by=payload.paid_by,
+            bank_account=payload.bank_account,
+            payment_method=payload.payment_method,
+            notes=payload.notes,
+            ledger_entry_id=entry.id,
+        )
+        db.add(payment)
+        created_payments.append(payment)
+        o.is_paid = True
+        db.commit()
+    db.refresh(entry)
+    for p in created_payments:
+        db.refresh(p)
+        return POBatchPaymentResponse(
+            ledger_entry_id=entry.id,
+            total_amount=total_amount,
+            payments=created_payments,
+        )
+
+
+UPLOAD_DIR = os.path.join(
+    os.path.dirname(__file__), "..", "..", "..", "uploads", "receipts"
+)
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
 
 @router.post("/purchase-orders/upload-receipt")
 async def upload_receipt(file: UploadFile = File(...)):
@@ -542,7 +640,9 @@ async def upload_receipt(file: UploadFile = File(...)):
     ext = os.path.splitext(file.filename)[1]
 
     # Bersihkan nama dari karakter yang tidak aman untuk path file
-    safe_name = "".join(c for c in original_name if c.isalnum() or c in (" ", "-", "_")).strip()
+    safe_name = "".join(
+        c for c in original_name if c.isalnum() or c in (" ", "-", "_")
+    ).strip()
     safe_name = safe_name.replace(" ", "_")
 
     unique_suffix = uuid.uuid4().hex[:6]

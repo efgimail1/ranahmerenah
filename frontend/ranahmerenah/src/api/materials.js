@@ -33,6 +33,9 @@ export const materialsApi = {
   addPOPayment:     (orderId, data)  => api.post(`/purchase-orders/${orderId}/payments`, data).then(r => r.data),
   deletePOPayment:  (orderId, payId) => api.delete(`/purchase-orders/${orderId}/payments/${payId}`),
 
+  // PO Batch Payment (bayar beberapa PO sekaligus, 1 supplier, 1 ledger entry)
+  createBatchPayment: (data) => api.post('/purchase-orders/batch-payments', data).then(r => r.data),
+
   // Legacy
   getAll: (params) => api.get('/materials', { params }).then(r => r.data),
   delete: (id)     => api.delete(`/materials/${id}`),

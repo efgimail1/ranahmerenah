@@ -54,6 +54,7 @@ const UNIT_OPTIONS = [
   "truck",
   "trip",
   "engkel",
+  "psg",
   "lainnya",
 ];
 

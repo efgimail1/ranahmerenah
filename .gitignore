@@ -17,13 +17,18 @@ backend/htmlcov/
 backend/.coverage
 
 # ─── Node / Frontend ──────────────────────────────────────
-frontend/node_modules/
-frontend/dist/
-frontend/dist-ssr/
-frontend/.env
-frontend/.env.local
-frontend/.env.production
-frontend/*.local
+frontend/ranahmerenah/node_modules/
+frontend/ranahmerenah/dist/
+frontend/ranahmerenah/dist-ssr/
+frontend/ranahmerenah/.env
+frontend/ranahmerenah/.env.local
+frontend/ranahmerenah/.env.production
+frontend/ranahmerenah/*.local
+
+# ─── Docker ────────────────────────────────────────────────
+.env
+docker-compose.override.yml
+*.env.docker
 
 # ─── VS Code ──────────────────────────────────────────────
 .vscode/settings.json
@@ -35,7 +40,6 @@ frontend/*.local
 Thumbs.db
 desktop.ini
 
-
 # ─── Logs ─────────────────────────────────────────────────
 *.log
 npm-debug.log*
@@ -46,9 +50,8 @@ yarn-error.log*
 *.sqlite
 *.sqlite3
 *.db
-supabase.dump
-db.txt
-dump-postgres-*.sql
+*.dump
+note
 
 # ─── Uploads ──────────────────────────────────────────────
 uploads/

@@ -1,21 +1,68 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { materialsApi } from "../api/materials";
 import { projectsApi } from "../api/projects";
 import { subProjectsApi } from "../api/subProjects";
-import { formatRupiah, formatDate } from "../utils/format";
+import { formatRupiah, formatDate, BANK_OPTIONS } from "../utils/format";
 import {
   ChevronDown,
   ChevronUp,
   Building2,
   Layers,
+  Wallet,
 } from "lucide-react";
+import toast from "react-hot-toast";
 
 export default function SupplierAgingReport() {
   const [filterProject, setFilterProject] = useState("");
   const [filterSubProject, setFilterSubProject] = useState("");
   const [filterSupplier, setFilterSupplier] = useState("");
   const [expandedSupplier, setExpandedSupplier] = useState(null);
+
+  const qc = useQueryClient();
+
+  const [selectedOrderIds, setSelectedOrderIds] = useState(new Set());
+  const [showBatchModal, setShowBatchModal] = useState(false);
+  const [batchForm, setBatchForm] = useState({
+    payment_date: new Date().toISOString().split("T")[0],
+    paid_by: "",
+    bank_account: "",
+    notes: "",
+  });
+
+  const toggleExpanded = (supplierId) => {
+    setExpandedSupplier((prev) => (prev === supplierId ? null : supplierId));
+    setSelectedOrderIds(new Set());
+  };
+
+  const toggleOrderSelected = (orderId) => {
+    setSelectedOrderIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(orderId)) next.delete(orderId);
+      else next.add(orderId);
+      return next;
+    });
+  };
+
+  const batchPayment = useMutation({
+    mutationFn: (data) => materialsApi.createBatchPayment(data),
+    onSuccess: (res) => {
+      toast.success(
+        `${res.payments.length} PO lunas, masuk ledger sebagai 1 entri`,
+      );
+      qc.invalidateQueries({ queryKey: ["po-aging"] });
+      setSelectedOrderIds(new Set());
+      setShowBatchModal(false);
+      setBatchForm({
+        payment_date: new Date().toISOString().split("T")[0],
+        paid_by: "",
+        bank_account: "",
+        notes: "",
+      });
+    },
+    onError: (e) =>
+      toast.error(e?.response?.data?.detail || "Gagal menyimpan pembayaran"),
+  });
 
   const { data: projects = [] } = useQuery({
     queryKey: ["projects"],
@@ -76,8 +123,12 @@ export default function SupplierAgingReport() {
   });
 
   const subProjectNameMap = {};
-  subProjects.forEach((sp) => { subProjectNameMap[sp.id] = sp.name; });
-  allSubProjects.forEach((sp) => { subProjectNameMap[sp.id] = sp.name; });
+  subProjects.forEach((sp) => {
+    subProjectNameMap[sp.id] = sp.name;
+  });
+  allSubProjects.forEach((sp) => {
+    subProjectNameMap[sp.id] = sp.name;
+  });
 
   // Group by supplier, hitung sisa hutang per PO
   const grouped = (() => {
@@ -129,15 +180,23 @@ export default function SupplierAgingReport() {
           <div className="text-xl font-bold text-red-600">
             {formatRupiah(grandTotal)}
           </div>
-          <div className="text-xs text-red-400 mt-0.5">{totalPO} PO belum lunas</div>
+          <div className="text-xs text-red-400 mt-0.5">
+            {totalPO} PO belum lunas
+          </div>
         </div>
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <div className="text-xs text-gray-400 mb-1">Jumlah Supplier</div>
-          <div className="text-xl font-bold text-gray-800">{totalSuppliers}</div>
-          <div className="text-xs text-gray-400 mt-0.5">supplier punya hutang</div>
+          <div className="text-xl font-bold text-gray-800">
+            {totalSuppliers}
+          </div>
+          <div className="text-xs text-gray-400 mt-0.5">
+            supplier punya hutang
+          </div>
         </div>
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-          <div className="text-xs text-amber-600 mb-1">Rata-rata per Supplier</div>
+          <div className="text-xs text-amber-600 mb-1">
+            Rata-rata per Supplier
+          </div>
           <div className="text-xl font-bold text-amber-700">
             {formatRupiah(totalSuppliers > 0 ? grandTotal / totalSuppliers : 0)}
           </div>
@@ -233,9 +292,7 @@ export default function SupplierAgingReport() {
                 {/* Supplier row */}
                 <div
                   className="grid grid-cols-[2fr_100px_180px_180px_40px] items-center px-4 py-3.5 hover:bg-gray-50 cursor-pointer transition-colors"
-                  onClick={() =>
-                    setExpandedSupplier(isExp ? null : group.supplier?.id)
-                  }
+                  onClick={() => toggleExpanded(group.supplier?.id)}
                 >
                   <div>
                     <div className="text-sm font-semibold text-gray-800">
@@ -275,6 +332,7 @@ export default function SupplierAgingReport() {
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="border-b border-gray-100">
+                          <th className="px-3 py-2 w-8"></th>
                           <th className="text-left px-6 py-2 font-medium text-gray-400 w-28">
                             PO No.
                           </th>
@@ -312,6 +370,14 @@ export default function SupplierAgingReport() {
                                 key={o.id}
                                 className="hover:bg-white transition-colors"
                               >
+                                <td className="px-3 py-2.5">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedOrderIds.has(o.id)}
+                                    onChange={() => toggleOrderSelected(o.id)}
+                                    className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                                  />
+                                </td>
                                 <td className="px-6 py-2.5">
                                   <span className="font-mono font-bold text-emerald-700">
                                     PO-{String(o.id).padStart(5, "0")}
@@ -377,6 +443,7 @@ export default function SupplierAgingReport() {
                       </tbody>
                       <tfoot>
                         <tr className="border-t-2 border-gray-200 bg-white">
+                          <td />
                           <td
                             colSpan={3}
                             className="px-6 py-2.5 text-xs font-semibold text-gray-500 uppercase"
@@ -396,6 +463,30 @@ export default function SupplierAgingReport() {
                         </tr>
                       </tfoot>
                     </table>
+                    {selectedOrderIds.size > 0 && (
+                      <div className="flex items-center justify-between px-4 py-3 bg-emerald-50 border-t border-emerald-100">
+                        <div className="text-xs text-emerald-700">
+                          <span className="font-semibold">
+                            {selectedOrderIds.size} PO dipilih
+                          </span>{" "}
+                          · Total{" "}
+                          <span className="font-bold">
+                            {formatRupiah(
+                              group.orders
+                                .filter((o) => selectedOrderIds.has(o.id))
+                                .reduce((s, o) => s + o.sisa, 0),
+                            )}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => setShowBatchModal(true)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg transition-colors"
+                        >
+                          <Wallet size={13} />
+                          Bayar Sekaligus
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -428,6 +519,157 @@ export default function SupplierAgingReport() {
           </div>
         </div>
       )}
+      {showBatchModal &&
+        (() => {
+          const currentGroup = grouped.find(
+            (g) => g.supplier?.id === expandedSupplier,
+          );
+          const selectedOrders = (currentGroup?.orders || []).filter((o) =>
+            selectedOrderIds.has(o.id),
+          );
+          const batchTotal = selectedOrders.reduce((s, o) => s + o.sisa, 0);
+
+          const fI =
+            "text-xs border border-gray-200 rounded-lg px-2.5 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 w-full";
+
+          const handleSubmit = () => {
+            if (!batchForm.payment_date)
+              return toast.error("Tanggal bayar harus diisi");
+            batchPayment.mutate({
+              order_ids: selectedOrders.map((o) => o.id),
+              payment_date: batchForm.payment_date,
+              paid_by: batchForm.paid_by || null,
+              bank_account: batchForm.bank_account || null,
+              payment_method: "transfer",
+              notes: batchForm.notes || null,
+            });
+          };
+
+          return (
+            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+              <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+                <div className="px-5 py-4 border-b border-gray-100">
+                  <h3 className="text-sm font-semibold text-gray-800">
+                    Bayar Sekaligus — {currentGroup?.supplier?.store_name}
+                  </h3>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {selectedOrders.length} PO akan ditandai lunas & dicatat
+                    sebagai 1 entri ledger
+                  </p>
+                </div>
+
+                <div className="px-5 py-4 space-y-3">
+                  <div className="bg-gray-50 rounded-lg p-3 space-y-1 max-h-32 overflow-y-auto">
+                    {selectedOrders.map((o) => (
+                      <div
+                        key={o.id}
+                        className="flex justify-between text-xs text-gray-600"
+                      >
+                        <span className="font-mono">
+                          PO-{String(o.id).padStart(5, "0")}
+                        </span>
+                        <span>{formatRupiah(o.sisa)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex justify-between items-center pt-1 border-t border-gray-100">
+                    <span className="text-xs font-semibold text-gray-500 uppercase">
+                      Total Bayar
+                    </span>
+                    <span className="text-base font-bold text-emerald-700">
+                      {formatRupiah(batchTotal)}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <div className="text-xs text-gray-400 mb-1">
+                        Tanggal Bayar *
+                      </div>
+                      <input
+                        type="date"
+                        value={batchForm.payment_date}
+                        onChange={(e) =>
+                          setBatchForm((f) => ({
+                            ...f,
+                            payment_date: e.target.value,
+                          }))
+                        }
+                        className={fI}
+                      />
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-400 mb-1">Bank</div>
+                      <select
+                        value={batchForm.bank_account}
+                        onChange={(e) =>
+                          setBatchForm((f) => ({
+                            ...f,
+                            bank_account: e.target.value,
+                          }))
+                        }
+                        className={fI}
+                      >
+                        <option value="">-- Bank --</option>
+                        {BANK_OPTIONS.map((b) => (
+                          <option key={b} value={b}>
+                            {b}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-xs text-gray-400 mb-1">
+                      Dibayar Oleh
+                    </div>
+                    <input
+                      type="text"
+                      value={batchForm.paid_by}
+                      onChange={(e) =>
+                        setBatchForm((f) => ({ ...f, paid_by: e.target.value }))
+                      }
+                      placeholder="Nama / perusahaan"
+                      className={fI}
+                    />
+                  </div>
+
+                  <div>
+                    <div className="text-xs text-gray-400 mb-1">Catatan</div>
+                    <input
+                      type="text"
+                      value={batchForm.notes}
+                      onChange={(e) =>
+                        setBatchForm((f) => ({ ...f, notes: e.target.value }))
+                      }
+                      placeholder="optional"
+                      className={fI}
+                    />
+                  </div>
+                </div>
+
+                <div className="px-5 py-4 border-t border-gray-100 flex justify-end gap-2">
+                  <button
+                    onClick={() => setShowBatchModal(false)}
+                    className="px-3 py-2 text-xs font-medium text-gray-500 hover:text-gray-700"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    onClick={handleSubmit}
+                    disabled={batchPayment.isPending}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    {batchPayment.isPending
+                      ? "Menyimpan..."
+                      : `Bayar ${formatRupiah(batchTotal)}`}
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
     </div>
   );
 }
