@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { materialsApi } from "../api/materials";
 import { projectsApi } from "../api/projects";
@@ -302,8 +302,11 @@ function ItemLookupModal({ open, onClose, onSelect, catalog }) {
 }
 
 // ─── Item Row ───────────────────────────────────────────────
-function ItemRow({ item, index, onChange, onRemove, catalog }) {
+function ItemRow({ item, index, onChange, onRemove, catalog, supplierId }) {
   const [lookupOpen, setLookupOpen] = useState(false);
+  const [lastPriceHint, setLastPriceHint] = useState(null);
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const [highlightIndex, setHighlightIndex] = useState(-1);
   const qtyInputRef = useRef(null);
   const qty = parseFloat(item.quantity) || 0;
   const price = parseFloat(parseCurrency(item.unit_price)) || 0;
@@ -311,14 +314,123 @@ function ItemRow({ item, index, onChange, onRemove, catalog }) {
   const gross = qty * price;
   const net = qty * (price - discount);
   const profit = qty * discount;
+  const suggestions = item.item_name.trim()
+    ? catalog
+        .filter((c) =>
+          c.name.toLowerCase().includes(item.item_name.trim().toLowerCase()),
+        )
+        .slice(0, 6)
+    : [];
 
-  const handleSelect = (catalogItem) => {
+  async function fetchLastPrice(
+    catalogItemId,
+    supplier,
+    { fillPrice = false } = {},
+  ) {
+    setLastPriceHint(null);
+
+    try {
+      const last = await materialsApi.getLastPrice(
+        catalogItemId,
+        supplier || null,
+      );
+
+      if (!last) {
+        return;
+      }
+
+      setLastPriceHint(last);
+
+      const hasExistingPrice =
+        item.unit_price !== "" && item.unit_price !== null;
+      if (fillPrice || !hasExistingPrice) {
+        onChange(
+          index,
+          "unit_price",
+          String(Math.round(parseFloat(last.unit_price))),
+        );
+      }
+    } catch (err) {
+      console.error("Gagal ambil harga terakhir:", err);
+    }
+  }
+
+  const handleSelect = async (catalogItem) => {
     onChange(index, "catalog_item_id", catalogItem.id);
     onChange(index, "item_name", catalogItem.name);
     onChange(index, "unit", catalogItem.default_unit || "pcs");
+    setLastPriceHint(null);
+
+    await fetchLastPrice(catalogItem.id, supplierId, { fillPrice: true });
+
     // Focus ke qty setelah pilih dari katalog
     setTimeout(() => qtyInputRef.current?.focus(), 50);
   };
+
+  const handleKeyDown = (e) => {
+    if (!suggestOpen || suggestions.length === 0) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlightIndex((p) => (p + 1) % suggestions.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightIndex((p) => (p <= 0 ? suggestions.length - 1 : p - 1));
+    } else if (e.key === "Enter") {
+      if (highlightIndex >= 0) {
+        e.preventDefault();
+        handleSelect(suggestions[highlightIndex]);
+        setSuggestOpen(false);
+        setHighlightIndex(-1);
+      }
+    } else if (e.key === "Escape") {
+      setSuggestOpen(false);
+      setHighlightIndex(-1);
+    }
+  };
+
+  useEffect(() => {
+    if (!item.catalog_item_id) {
+      return;
+    }
+
+    let cancelled = false;
+    const loadLastPrice = async () => {
+      try {
+        const last = await materialsApi.getLastPrice(
+          item.catalog_item_id,
+          supplierId || null,
+        );
+
+        if (cancelled || !last) {
+          return;
+        }
+
+        setLastPriceHint(last);
+
+        const hasExistingPrice =
+          item.unit_price !== "" && item.unit_price != null;
+        if (!hasExistingPrice) {
+          onChange(
+            index,
+            "unit_price",
+            String(Math.round(parseFloat(last.unit_price))),
+          );
+        }
+      } catch (err) {
+        console.error("Gagal ambil harga terakhir:", err);
+      }
+    };
+
+    const timer = setTimeout(() => {
+      void loadLastPrice();
+    }, 0);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [item.catalog_item_id, item.unit_price, supplierId, index, onChange]);
 
   const inputCls =
     "w-full text-xs border border-gray-200 rounded-md px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all";
@@ -326,20 +438,26 @@ function ItemRow({ item, index, onChange, onRemove, catalog }) {
   return (
     <>
       <tr className="border-b border-gray-100 hover:bg-emerald-50/30 transition-colors group">
-        <td className="px-3 py-2 text-center text-xs text-gray-400 w-8 align-middle">
+        <td className="px-3 py-2 text-center text-xs text-gray-400 w-8 align-top">
           {index + 1}
         </td>
-        <td className="px-2 py-1.5 align-middle">
-          <div className="flex gap-1">
+        <td className="px-2 py-1.5 align-top">
+          <div className="flex gap-1 relative">
             <input
               type="text"
               value={item.item_name}
               onChange={(e) => {
                 onChange(index, "item_name", e.target.value);
                 onChange(index, "catalog_item_id", null);
+                setSuggestOpen(true);
+                setHighlightIndex(-1);
               }}
+              onFocus={() => setSuggestOpen(true)}
+              onBlur={() => setTimeout(() => setSuggestOpen(false), 150)}
+              onKeyDown={handleKeyDown}
               placeholder="Nama barang..."
               required
+              autoComplete="off"
               className={inputCls}
             />
             <button
@@ -351,9 +469,39 @@ function ItemRow({ item, index, onChange, onRemove, catalog }) {
             >
               <Search size={13} />
             </button>
+
+            {suggestOpen && item.item_name.trim() && suggestions.length > 0 && (
+              <div className="absolute top-full left-0 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg z-20 max-h-56 overflow-y-auto">
+                {suggestions.map((c, i) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onMouseEnter={() => setHighlightIndex(i)}
+                    onClick={() => {
+                      handleSelect(c);
+                      setSuggestOpen(false);
+                      setHighlightIndex(-1);
+                    }}
+                    className={`w-full flex items-center justify-between px-3 py-2 text-left text-xs transition-colors ${
+                      i === highlightIndex
+                        ? "bg-emerald-50 text-emerald-700"
+                        : "hover:bg-emerald-50"
+                    }`}
+                  >
+                    <span className={i === highlightIndex ? "" : "text-gray-800"}>
+                      {c.name}
+                    </span>
+                    <span className="text-gray-400 ml-2 shrink-0">
+                      {c.default_unit}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </td>
-        <td className="px-2 py-1.5 w-28 align-middle">
+        <td className="px-2 py-1.5 w-28 align-top">
           <input
             ref={qtyInputRef}
             type="text"
@@ -371,7 +519,7 @@ function ItemRow({ item, index, onChange, onRemove, catalog }) {
             className={`${inputCls} text-right`}
           />
         </td>
-        <td className="px-2 py-1.5 w-24 align-middle">
+        <td className="px-2 py-1.5 w-24 align-top">
           <select
             value={item.unit}
             onChange={(e) => onChange(index, "unit", e.target.value)}
@@ -384,7 +532,7 @@ function ItemRow({ item, index, onChange, onRemove, catalog }) {
             ))}
           </select>
         </td>
-        <td className="px-2 py-1.5 w-40 align-middle">
+        <td className="px-2 py-1.5 w-40 align-top">
           <div className="relative">
             <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
               Rp
@@ -407,8 +555,16 @@ function ItemRow({ item, index, onChange, onRemove, catalog }) {
               className={`${inputCls} pl-7 text-right`}
             />
           </div>
+          {lastPriceHint && (
+            <div className="text-[10px] text-gray-400 mt-0.5 leading-tight">
+              Terakhir: {formatRupiah(lastPriceHint.unit_price)}
+              {!lastPriceHint.same_supplier &&
+                lastPriceHint.supplier_name &&
+                ` (supplier ${lastPriceHint.supplier_name})`}
+            </div>
+          )}
         </td>
-        <td className="px-2 py-1.5 w-36 align-middle">
+        <td className="px-2 py-1.5 w-36 align-top">
           <div className="relative">
             <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
               Rp
@@ -436,12 +592,12 @@ function ItemRow({ item, index, onChange, onRemove, catalog }) {
             />
           </div>
         </td>
-        <td className="px-3 py-2 w-32 text-right align-middle">
+        <td className="px-3 py-2 w-32 text-right align-top">
           <span className="text-xs text-gray-500">
             {gross > 0 ? formatRupiah(gross) : "—"}
           </span>
         </td>
-        <td className="px-3 py-2 w-36 text-right align-middle">
+        <td className="px-3 py-2 w-36 text-right align-top">
           <span className="text-sm font-semibold text-gray-900">
             {net > 0 ? formatRupiah(net) : "—"}
           </span>
@@ -451,7 +607,7 @@ function ItemRow({ item, index, onChange, onRemove, catalog }) {
             </div>
           )}
         </td>
-        <td className="px-2 py-1.5 w-8 text-center align-middle">
+        <td className="px-2 py-1.5 w-8 text-center align-top">
           <button
             type="button"
             onClick={() => onRemove(index)}
@@ -945,6 +1101,9 @@ function PurchaseOrderForm({
                     onChange={changeItem}
                     onRemove={removeItem}
                     catalog={catalog}
+                    supplierId={
+                      header.supplier_id ? parseInt(header.supplier_id) : null
+                    }
                   />
                 ))}
               </tbody>

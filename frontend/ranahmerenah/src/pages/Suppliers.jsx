@@ -5,8 +5,8 @@ import Button from '../components/ui/Button'
 import Card from '../components/ui/Card'
 import Modal from '../components/ui/Modal'
 import Input, { Select } from '../components/ui/Input'
-import { formatRupiah, formatDate } from '../utils/format'
-import { Plus, Pencil, Trash2, Truck, Phone, MapPin, Package, Tag, X } from 'lucide-react'
+import { formatRupiah, formatDate, toWhatsappLink  } from '../utils/format'
+import { Plus, Pencil, Trash2, Truck, Phone, MapPin, Package, Tag, X, Landmark } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 const UNIT_OPTIONS = [
@@ -16,7 +16,11 @@ const UNIT_OPTIONS = [
 
 // ─── Supplier Form ─────────────────────────────────────────
 function SupplierForm({ initial, onSubmit, loading }) {
-  const [form, setForm] = useState(initial || { store_name:'', address:'', phone:'', contact_person:'', notes:'' })
+  const [form, setForm] = useState(initial || {
+    store_name:'', address:'', phone:'',
+    bank_name:'', bank_account_number:'', bank_account_holder:'',
+    contact_person:'', notes:'',
+  })
   const set = (f, v) => setForm(p => ({ ...p, [f]: v }))
   return (
     <form onSubmit={e => { e.preventDefault(); onSubmit(form) }} className="space-y-4">
@@ -25,7 +29,13 @@ function SupplierForm({ initial, onSubmit, loading }) {
           onChange={e => set('store_name', e.target.value)}
           placeholder="e.g. TB Makmur Jaya" className="col-span-2" required />
         <Input label="Phone Number" value={form.phone}
-          onChange={e => set('phone', e.target.value)} placeholder="e.g. 08123456789" />
+          onChange={e => set('phone', e.target.value)} placeholder="e.g. 628123456789" />
+        <Input label="Bank Name" value={form.bank_name}
+          onChange={e => set('bank_name', e.target.value)} placeholder="e.g. BCA" />
+        <Input label="Account Number" value={form.bank_account_number}
+          onChange={e => set('bank_account_number', e.target.value)} placeholder="e.g. 1234567890" />
+        <Input label="Account Holder Name" value={form.bank_account_holder}
+          onChange={e => set('bank_account_holder', e.target.value)} placeholder="e.g. Agus Setiawan" />
         <Input label="Contact Person" value={form.contact_person}
           onChange={e => set('contact_person', e.target.value)} placeholder="e.g. Mr. Agus" />
         <Input label="Address" value={form.address}
@@ -353,13 +363,25 @@ export default function Suppliers() {
 
               <div className="mt-3 space-y-1.5">
                 {s.phone && (
-                  <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <a href={toWhatsappLink(s.phone)} target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-2 text-xs text-gray-500 hover:text-emerald-600 transition-colors w-fit">
                     <Phone size={12} /> {s.phone}
-                  </div>
+                  </a>
                 )}
                 {s.address && (
                   <div className="flex items-center gap-2 text-xs text-gray-500">
                     <MapPin size={12} /> {s.address}
+                  </div>
+                )}
+                {(s.bank_name || s.bank_account_number) && (
+                  <div className="flex items-start gap-2 text-xs text-gray-500 pt-1">
+                    <Landmark size={12} className="mt-0.5 shrink-0" />
+                    <div>
+                      <span>{s.bank_name}{s.bank_name && s.bank_account_number ? ' — ' : ''}{s.bank_account_number}</span>
+                      {s.bank_account_holder && (
+                        <div className="text-gray-400">a.n. {s.bank_account_holder}</div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

@@ -21,6 +21,9 @@ export const materialsApi = {
   deleteSupplierPrice: (priceId)          => api.delete(`/supplier-prices/${priceId}`),
   comparePrices:       (params)           => api.get('/prices/compare', { params }).then(r => r.data),
 
+  // Last Price (autofill harga PO dari histori pembelian)
+  getLastPrice: (catalogItemId, supplierId) => api.get('/purchase-items/last-price', {params: supplierId? { catalog_item_id: catalogItemId, supplier_id: supplierId }: { catalog_item_id: catalogItemId },}).then(r => r.data),
+  
   // Purchase Orders
   getPurchaseOrders:   (params)   => api.get('/purchase-orders', { params }).then(r => r.data),
   getPurchaseOrder:    (id)       => api.get(`/purchase-orders/${id}`).then(r => r.data),

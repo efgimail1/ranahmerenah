@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 import os
-import shutil
 import uuid
+from anyio import open_file
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from decimal import Decimal
@@ -232,6 +232,52 @@ def compare_prices(
         }
         for p in prices
     ]
+    
+
+# ─── Last Price (autofill harga PO) ────────────────────────
+@router.get("/purchase-items/last-price")
+def get_last_price(
+    catalog_item_id: int,
+    supplier_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+):
+    """Ambil harga terakhir item ini pernah dibeli.
+    Utamakan dari supplier yang sama; fallback ke supplier manapun
+    kalau belum pernah beli item ini dari supplier tsb."""
+    base_query = (
+        db.query(PurchaseItem)
+        .join(PurchaseOrder, PurchaseItem.order_id == PurchaseOrder.id)
+        .filter(PurchaseItem.catalog_item_id == catalog_item_id)
+    )
+
+    result = None
+    is_same_supplier = False
+
+    if supplier_id:
+        result = (
+            base_query.filter(PurchaseOrder.supplier_id == supplier_id)
+            .order_by(PurchaseOrder.purchase_date.desc(), PurchaseItem.id.desc())
+            .first()
+        )
+        is_same_supplier = result is not None
+
+    if not result:
+        result = (
+            base_query.order_by(PurchaseOrder.purchase_date.desc(), PurchaseItem.id.desc())
+            .first()
+        )
+        is_same_supplier = False
+
+    if not result:
+        return None
+
+    return {
+        "unit_price": result.unit_price,
+        "purchase_date": result.order.purchase_date,
+        "supplier_id": result.order.supplier_id,
+        "supplier_name": result.order.supplier.store_name if result.order.supplier else None,
+        "same_supplier": is_same_supplier,
+    }
 
 
 # ─── Purchase Orders ───────────────────────────────────────
@@ -649,8 +695,9 @@ async def upload_receipt(file: UploadFile = File(...)):
     final_name = f"{safe_name}_{unique_suffix}{ext}"
     file_path = os.path.join(UPLOAD_DIR, final_name)
 
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    async with open_file(file_path, "wb") as buffer:
+        while chunk := await file.read(1024 * 1024):
+            await buffer.write(chunk)
 
     url = f"/uploads/receipts/{final_name}"
     return {"url": url}

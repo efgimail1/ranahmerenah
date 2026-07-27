@@ -33,6 +33,9 @@ class Supplier(Base):
     store_name = Column(String(150), nullable=False)
     address = Column(String(255))
     phone = Column(String(20))
+    bank_name = Column(String(100), nullable=True)
+    bank_account_number = Column(String(50), nullable=True)
+    bank_account_holder = Column(String(150), nullable=True)
     contact_person = Column(String(100))
     notes = Column(Text)
 

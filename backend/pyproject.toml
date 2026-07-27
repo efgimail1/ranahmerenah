@@ -1,0 +1,13 @@
+[tool.ruff]
+required-version = ">=0.16.0,<0.17.0"
+exclude = ["venv", ".venv"]
+
+[tool.ruff.lint]
+ignore = [
+    "B008",  # Depends(...) di default argument — pola wajib FastAPI, bukan bug
+    "UP006", # List vs list — kosmetik, gak masalah untuk kompatibilitas
+    "UP045",
+    "UP035",
+    "FURB157",
+    "I001",
+]
