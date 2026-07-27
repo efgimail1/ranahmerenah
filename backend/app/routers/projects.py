@@ -1,20 +1,25 @@
 from sqlalchemy.orm import Session, joinedload
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import JSONResponse
 from sqlalchemy import func
 from typing import List, Optional
 from app.database import get_db
-from app.models.project import Project, ProjectPayment, PaymentStatus, ProjectType
+from app.models.project import Project, ProjectPayment, ProjectType
+from app.models.sub_project import SubProject, SubProjectBilling
 from app.schemas.project import (
-    ProjectCreate, ProjectUpdate, ProjectResponse,
-    ProjectSummary, ProjectPaymentCreate,
-    ProjectPaymentUpdate, ProjectPaymentResponse
+    ProjectCreate,
+    ProjectUpdate,
+    ProjectResponse,
+    ProjectSummary,
+    ProjectPaymentCreate,
+    ProjectPaymentUpdate,
+    ProjectPaymentResponse,
 )
 
 router = APIRouter(prefix="/projects", tags=["Projects"])
 
 
 # ─── Projects ──────────────────────────────────────────────
+
 
 @router.get("/", response_model=List[ProjectSummary])
 def get_all_projects(
@@ -31,10 +36,29 @@ def get_all_projects(
 
     result = []
     for p in projects:
-        architect_fee = float(p.architect_fee or 0)
-        total_paid = sum(float(pay.amount_paid or 0) for pay in p.payments)
-        total_outstanding = max(architect_fee - total_paid, 0)
-        progress = (total_paid / architect_fee * 100) if architect_fee > 0 else 0
+        if p.project_type == ProjectType.contractor:
+            # Kontraktor: RAB & Collected diambil dari agregasi sub-project
+            rab_total = float(
+                db.query(func.coalesce(func.sum(SubProject.rab_value), 0))
+                .filter(SubProject.project_id == p.id)
+                .scalar()
+            )
+            total_paid = float(
+                db.query(func.coalesce(func.sum(
+                    func.coalesce(SubProjectBilling.net_amount, SubProjectBilling.amount)
+                ), 0))
+                .filter(SubProjectBilling.project_id == p.id)
+                .scalar()
+            )
+            total_outstanding = max(rab_total - total_paid, 0)
+            progress = (total_paid / rab_total * 100) if rab_total > 0 else 0
+        else:
+            # Arsitek: berdasarkan architect_fee & termin payment
+            architect_fee = float(p.architect_fee or 0)
+            rab_total = float(p.rab_value or 0)
+            total_paid = sum(float(pay.amount_paid or 0) for pay in p.payments)
+            total_outstanding = max(architect_fee - total_paid, 0)
+            progress = (total_paid / architect_fee * 100) if architect_fee > 0 else 0
 
         result.append(ProjectSummary(
             id=p.id,
@@ -43,8 +67,8 @@ def get_all_projects(
             location=p.location,
             status=p.status,
             project_type=p.project_type or ProjectType.architect,
-            rab_value=p.rab_value or 0,
-            architect_fee=architect_fee,
+            rab_value=rab_total,
+            architect_fee=float(p.architect_fee or 0),
             total_paid=total_paid,
             total_outstanding=total_outstanding,
             progress_percent=round(min(progress, 100), 1),
@@ -83,60 +107,78 @@ def create_project(payload: ProjectCreate, db: Session = Depends(get_db)):
 
 @router.get("/{project_id}")
 def get_project(project_id: int, db: Session = Depends(get_db)):
-    project = db.query(Project).options(
-        joinedload(Project.payments)
-    ).filter(Project.id == project_id).first()
+    project = (
+        db.query(Project)
+        .options(joinedload(Project.payments))
+        .filter(Project.id == project_id)
+        .first()
+    )
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    architect_fee = float(project.architect_fee or 0)
-    total_paid    = sum(float(pay.amount_paid or 0) for pay in project.payments)
-    outstanding   = max(architect_fee - total_paid, 0)
-    progress      = min((total_paid / architect_fee * 100), 100) if architect_fee > 0 else 0
+    if project.project_type == ProjectType.contractor:
+        rab_total = float(
+            db.query(func.coalesce(func.sum(SubProject.rab_value), 0))
+            .filter(SubProject.project_id == project.id)
+            .scalar()
+        )
+        total_paid = float(
+            db.query(func.coalesce(func.sum(
+                func.coalesce(SubProjectBilling.net_amount, SubProjectBilling.amount)
+            ), 0))
+            .filter(SubProjectBilling.project_id == project.id)
+            .scalar()
+        )
+        outstanding = max(rab_total - total_paid, 0)
+        progress = (total_paid / rab_total * 100) if rab_total > 0 else 0
+    else:
+        architect_fee = float(project.architect_fee or 0)
+        rab_total = float(project.rab_value or 0)
+        total_paid = sum(float(pay.amount_paid or 0) for pay in project.payments)
+        outstanding = max(architect_fee - total_paid, 0)
+        progress = min((total_paid / architect_fee * 100), 100) if architect_fee > 0 else 0
 
     # Build response manually
     result = {
-        "id":                project.id,
-        "client_name":       project.client_name,
-        "client_phone":      project.client_phone,
-        "project_name":      project.project_name,
-        "location":          project.location,
-        "received_date":     project.received_date,
-        "start_date":        project.start_date,
-        "end_date":          project.end_date,
-        "rab_value":         project.rab_value,
-        "architect_fee":     project.architect_fee,
-        "status":            project.status,
-        "project_type":      project.project_type or "architect",
-        "notes":             project.notes,
-        "total_paid":        total_paid,
+        "id": project.id,
+        "client_name": project.client_name,
+        "client_phone": project.client_phone,
+        "project_name": project.project_name,
+        "location": project.location,
+        "received_date": project.received_date,
+        "start_date": project.start_date,
+        "end_date": project.end_date,
+        "rab_value": rab_total,
+        "architect_fee": project.architect_fee,
+        "status": project.status,
+        "project_type": project.project_type or "architect",
+        "notes": project.notes,
+        "total_paid": total_paid,
         "total_outstanding": outstanding,
-        "progress_percent":  round(progress, 1),
+        "progress_percent": round(progress, 1),
         "payments": [
             {
-                "id":          p.id,
-                "project_id":  p.project_id,
-                "term_type":   p.term_type,
-                "term_label":  p.term_label,
-                "percentage":  p.percentage,
-                "amount":      p.amount,
-                "due_date":    p.due_date,
-                "paid_date":   p.paid_date,
+                "id": p.id,
+                "project_id": p.project_id,
+                "term_type": p.term_type,
+                "term_label": p.term_label,
+                "percentage": p.percentage,
+                "amount": p.amount,
+                "due_date": p.due_date,
+                "paid_date": p.paid_date,
                 "amount_paid": p.amount_paid,
-                "status":      p.status,
-                "notes":       p.notes,
+                "status": p.status,
+                "notes": p.notes,
             }
             for p in project.payments
-        ]
+        ],
     }
     return result
 
 
 @router.put("/{project_id}", response_model=ProjectResponse)
 def update_project(
-    project_id: int,
-    payload: ProjectUpdate,
-    db: Session = Depends(get_db)
+    project_id: int, payload: ProjectUpdate, db: Session = Depends(get_db)
 ):
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
@@ -161,19 +203,21 @@ def delete_project(project_id: int, db: Session = Depends(get_db)):
 
 # ─── Payments ──────────────────────────────────────────────
 
+
 @router.get("/{project_id}/payments", response_model=List[ProjectPaymentResponse])
 def get_payments(project_id: int, db: Session = Depends(get_db)):
-    return db.query(ProjectPayment).filter(
-        ProjectPayment.project_id == project_id
-    ).all()
+    return (
+        db.query(ProjectPayment).filter(ProjectPayment.project_id == project_id).all()
+    )
 
 
-@router.post("/{project_id}/payments", response_model=ProjectPaymentResponse,
-             status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{project_id}/payments",
+    response_model=ProjectPaymentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def add_payment(
-    project_id: int,
-    payload: ProjectPaymentCreate,
-    db: Session = Depends(get_db)
+    project_id: int, payload: ProjectPaymentCreate, db: Session = Depends(get_db)
 ):
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
@@ -188,9 +232,7 @@ def add_payment(
 
 @router.put("/payments/{payment_id}", response_model=ProjectPaymentResponse)
 def update_payment(
-    payment_id: int,
-    payload: ProjectPaymentUpdate,
-    db: Session = Depends(get_db)
+    payment_id: int, payload: ProjectPaymentUpdate, db: Session = Depends(get_db)
 ):
     payment = db.query(ProjectPayment).filter(ProjectPayment.id == payment_id).first()
     if not payment:
@@ -202,6 +244,7 @@ def update_payment(
     db.commit()
     db.refresh(payment)
     return payment
+
 
 @router.delete("/payments/{payment_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_payment(payment_id: int, db: Session = Depends(get_db)):
